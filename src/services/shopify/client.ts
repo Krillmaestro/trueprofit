@@ -5,6 +5,12 @@ export interface ShopifyClientConfig {
   accessToken: string
 }
 
+export interface PaginatedResponse<T> {
+  data: T
+  nextPageInfo?: string
+  hasNextPage: boolean
+}
+
 export class ShopifyClient {
   private shopDomain: string
   private accessToken: string
@@ -39,26 +45,76 @@ export class ShopifyClient {
     return response.json()
   }
 
+  // Parse Shopify Link header for pagination
+  private parseLinkHeader(linkHeader: string | null): { next?: string; previous?: string } {
+    if (!linkHeader) return {}
+
+    const links: { next?: string; previous?: string } = {}
+    const parts = linkHeader.split(',')
+
+    for (const part of parts) {
+      const match = part.match(/<[^>]*page_info=([^>&]*).*>;\s*rel="(\w+)"/)
+      if (match) {
+        const [, pageInfo, rel] = match
+        if (rel === 'next') links.next = pageInfo
+        if (rel === 'previous') links.previous = pageInfo
+      }
+    }
+
+    return links
+  }
+
+  private async paginatedRequest<T>(
+    endpoint: string,
+    options: RequestInit = {}
+  ): Promise<PaginatedResponse<T>> {
+    const url = `${this.baseUrl}${endpoint}`
+
+    const response = await fetch(url, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Shopify-Access-Token': this.accessToken,
+        ...options.headers,
+      },
+    })
+
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(`Shopify API error: ${response.status} - ${error}`)
+    }
+
+    const linkHeader = response.headers.get('Link')
+    const links = this.parseLinkHeader(linkHeader)
+    const data = await response.json()
+
+    return {
+      data,
+      nextPageInfo: links.next,
+      hasNextPage: !!links.next,
+    }
+  }
+
   // Shop Info
   async getShop() {
     return this.request<{ shop: ShopifyShop }>('/shop.json')
   }
 
-  // Products
-  async getProducts(params?: { limit?: number; page_info?: string }) {
+  // Products with pagination support
+  async getProducts(params?: { limit?: number; page_info?: string }): Promise<PaginatedResponse<{ products: ShopifyProduct[] }>> {
     const searchParams = new URLSearchParams()
     if (params?.limit) searchParams.set('limit', params.limit.toString())
     if (params?.page_info) searchParams.set('page_info', params.page_info)
 
     const query = searchParams.toString() ? `?${searchParams}` : ''
-    return this.request<{ products: ShopifyProduct[] }>(`/products.json${query}`)
+    return this.paginatedRequest<{ products: ShopifyProduct[] }>(`/products.json${query}`)
   }
 
   async getProduct(productId: string) {
     return this.request<{ product: ShopifyProduct }>(`/products/${productId}.json`)
   }
 
-  // Orders
+  // Orders with pagination support
   async getOrders(params?: {
     limit?: number
     page_info?: string
@@ -66,7 +122,7 @@ export class ShopifyClient {
     created_at_min?: string
     created_at_max?: string
     financial_status?: string
-  }) {
+  }): Promise<PaginatedResponse<{ orders: ShopifyOrder[] }>> {
     const searchParams = new URLSearchParams()
     if (params?.limit) searchParams.set('limit', params.limit.toString())
     if (params?.page_info) searchParams.set('page_info', params.page_info)
@@ -76,7 +132,7 @@ export class ShopifyClient {
     if (params?.financial_status) searchParams.set('financial_status', params.financial_status)
 
     const query = searchParams.toString() ? `?${searchParams}` : ''
-    return this.request<{ orders: ShopifyOrder[] }>(`/orders.json${query}`)
+    return this.paginatedRequest<{ orders: ShopifyOrder[] }>(`/orders.json${query}`)
   }
 
   async getOrder(orderId: string) {

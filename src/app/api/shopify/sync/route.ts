@@ -38,13 +38,20 @@ export async function POST(request: NextRequest) {
 
   try {
     let syncedCount = 0
+    const syncDetails: { products?: number; orders?: number; transactions?: number; refunds?: number } = {}
 
     if (type === 'products' || type === 'all') {
-      syncedCount += await syncProducts(store.id, client)
+      const productCount = await syncProducts(store.id, client)
+      syncedCount += productCount
+      syncDetails.products = productCount
     }
 
     if (type === 'orders' || type === 'all') {
-      syncedCount += await syncOrders(store.id, client)
+      const { orders, transactions, refunds } = await syncOrders(store.id, client)
+      syncedCount += orders
+      syncDetails.orders = orders
+      syncDetails.transactions = transactions
+      syncDetails.refunds = refunds
     }
 
     // Update last sync time
@@ -56,6 +63,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       syncedCount,
+      details: syncDetails,
       message: `Synced ${syncedCount} items`
     })
   } catch (error) {
@@ -72,7 +80,8 @@ async function syncProducts(storeId: string, client: ShopifyClient): Promise<num
   let pageInfo: string | undefined
 
   do {
-    const { products } = await client.getProducts({ limit: 250, page_info: pageInfo })
+    const response = await client.getProducts({ limit: 250, page_info: pageInfo })
+    const { products } = response.data
 
     for (const productData of products) {
       const product = await prisma.product.upsert({
@@ -137,28 +146,31 @@ async function syncProducts(storeId: string, client: ShopifyClient): Promise<num
       count++
     }
 
-    // Pagination would need to be implemented via Link header parsing
-    // For simplicity, we'll break after first page for now
-    pageInfo = undefined
+    // Continue to next page if available
+    pageInfo = response.nextPageInfo
   } while (pageInfo)
 
   return count
 }
 
-async function syncOrders(storeId: string, client: ShopifyClient): Promise<number> {
-  let count = 0
+async function syncOrders(storeId: string, client: ShopifyClient): Promise<{ orders: number; transactions: number; refunds: number }> {
+  let orderCount = 0
+  let transactionCount = 0
+  let refundCount = 0
   let pageInfo: string | undefined
 
-  // Get orders from the last 60 days by default
+  // Get orders from the last 90 days by default (increased from 60)
   const sinceDate = new Date()
-  sinceDate.setDate(sinceDate.getDate() - 60)
+  sinceDate.setDate(sinceDate.getDate() - 90)
 
   do {
-    const { orders } = await client.getOrders({
+    const response = await client.getOrders({
       limit: 250,
       page_info: pageInfo,
       created_at_min: sinceDate.toISOString(),
+      status: 'any', // Include all orders, not just open
     })
+    const { orders } = response.data
 
     for (const orderData of orders) {
       const order = await prisma.order.upsert({
@@ -206,8 +218,20 @@ async function syncOrders(storeId: string, client: ShopifyClient): Promise<numbe
         },
       })
 
-      // Sync line items
+      // Sync line items and link to variants
       for (const item of orderData.line_items || []) {
+        // Try to find the variant in our database
+        let variantId: string | null = null
+        if (item.variant_id) {
+          const variant = await prisma.productVariant.findFirst({
+            where: {
+              shopifyVariantId: BigInt(item.variant_id),
+              product: { storeId },
+            },
+          })
+          variantId = variant?.id || null
+        }
+
         await prisma.orderLineItem.upsert({
           where: {
             orderId_shopifyLineItemId: {
@@ -220,6 +244,7 @@ async function syncOrders(storeId: string, client: ShopifyClient): Promise<numbe
             shopifyLineItemId: BigInt(item.id),
             shopifyProductId: item.product_id ? BigInt(item.product_id) : null,
             shopifyVariantId: item.variant_id ? BigInt(item.variant_id) : null,
+            variantId, // Link to our variant record
             title: item.title,
             variantTitle: item.variant_title,
             sku: item.sku,
@@ -229,6 +254,7 @@ async function syncOrders(storeId: string, client: ShopifyClient): Promise<numbe
             taxAmount: item.tax_lines?.reduce((sum: number, t: { price: string }) => sum + parseFloat(t.price || '0'), 0) || 0,
           },
           update: {
+            variantId, // Update the link
             quantity: item.quantity,
             price: parseFloat(item.price || '0'),
             totalDiscount: parseFloat(item.total_discount || '0'),
@@ -236,13 +262,95 @@ async function syncOrders(storeId: string, client: ShopifyClient): Promise<numbe
         })
       }
 
-      count++
+      // Sync transactions for payment fee calculation
+      try {
+        const { transactions } = await client.getTransactions(orderData.id.toString())
+        for (const tx of transactions) {
+          if (tx.status === 'success') {
+            const feeAmount = tx.receipt?.fee_amount ? parseFloat(tx.receipt.fee_amount) : 0
+            await prisma.orderTransaction.upsert({
+              where: {
+                orderId_shopifyTransactionId: {
+                  orderId: order.id,
+                  shopifyTransactionId: BigInt(tx.id),
+                },
+              },
+              create: {
+                orderId: order.id,
+                shopifyTransactionId: BigInt(tx.id),
+                kind: tx.kind,
+                gateway: tx.gateway,
+                status: tx.status,
+                amount: parseFloat(tx.amount || '0'),
+                currency: tx.currency,
+                processedAt: new Date(tx.processed_at),
+                paymentFee: feeAmount,
+                paymentFeeCalculated: feeAmount > 0,
+              },
+              update: {
+                status: tx.status,
+                amount: parseFloat(tx.amount || '0'),
+                paymentFee: feeAmount,
+                paymentFeeCalculated: feeAmount > 0,
+              },
+            })
+            transactionCount++
+          }
+        }
+      } catch (txError) {
+        // Continue if transaction sync fails for individual order
+        console.warn(`Failed to sync transactions for order ${orderData.id}:`, txError)
+      }
+
+      // Sync refunds
+      for (const refundData of orderData.refunds || []) {
+        const refundAmount = refundData.transactions?.reduce(
+          (sum, t) => sum + parseFloat(t.amount || '0'),
+          0
+        ) || 0
+
+        await prisma.orderRefund.upsert({
+          where: {
+            orderId_shopifyRefundId: {
+              orderId: order.id,
+              shopifyRefundId: BigInt(refundData.id),
+            },
+          },
+          create: {
+            orderId: order.id,
+            shopifyRefundId: BigInt(refundData.id),
+            amount: refundAmount,
+            note: refundData.note || null,
+            restock: refundData.restock || false,
+            processedAt: new Date(refundData.created_at),
+          },
+          update: {
+            amount: refundAmount,
+            note: refundData.note || null,
+            restock: refundData.restock || false,
+          },
+        })
+        refundCount++
+      }
+
+      // Update order's total refund amount
+      const totalRefundAmount = (orderData.refunds || []).reduce((sum, r) => {
+        return sum + (r.transactions?.reduce((tSum, t) => tSum + parseFloat(t.amount || '0'), 0) || 0)
+      }, 0)
+
+      if (totalRefundAmount > 0) {
+        await prisma.order.update({
+          where: { id: order.id },
+          data: { totalRefundAmount },
+        })
+      }
+
+      orderCount++
     }
 
-    // Pagination would need to be implemented via Link header parsing
-    // For simplicity, we'll break after first page for now
-    pageInfo = undefined
+    // Continue to next page if available
+    pageInfo = response.nextPageInfo
   } while (pageInfo)
 
-  return count
+  return { orders: orderCount, transactions: transactionCount, refunds: refundCount }
 }
