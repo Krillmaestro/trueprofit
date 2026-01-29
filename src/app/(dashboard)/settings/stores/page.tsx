@@ -36,10 +36,11 @@ export default function StoresPage() {
   const [shopDomain, setShopDomain] = useState('')
 
   const handleConnect = () => {
-    // In production, this would redirect to Shopify OAuth
-    const redirectUrl = `/api/shopify/oauth?shop=${shopDomain}`
-    console.log('Would redirect to:', redirectUrl)
-    setDialogOpen(false)
+    // Redirect to Shopify OAuth
+    const fullDomain = shopDomain.includes('.myshopify.com')
+      ? shopDomain
+      : `${shopDomain}.myshopify.com`
+    window.location.href = `/api/shopify/oauth?shop=${fullDomain}`
   }
 
   return (

@@ -4,8 +4,8 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import crypto from 'crypto'
 
-const SHOPIFY_API_KEY = process.env.SHOPIFY_API_KEY!
-const SHOPIFY_API_SECRET = process.env.SHOPIFY_API_SECRET!
+const SHOPIFY_API_KEY = process.env.SHOPIFY_API_KEY || ''
+const SHOPIFY_API_SECRET = process.env.SHOPIFY_API_SECRET || ''
 const APP_URL = process.env.NEXTAUTH_URL || 'http://localhost:3000'
 
 const SCOPES = [
@@ -30,6 +30,12 @@ export async function GET(request: NextRequest) {
   const state = searchParams.get('state')
   const hmac = searchParams.get('hmac')
 
+  // Check if Shopify is configured
+  if (!SHOPIFY_API_KEY || !SHOPIFY_API_SECRET) {
+    console.error('Shopify OAuth not configured: missing API credentials')
+    return NextResponse.redirect(new URL('/settings/stores?error=shopify_not_configured', APP_URL))
+  }
+
   // Step 1: Initial OAuth request - redirect to Shopify
   if (shop && !code) {
     const nonce = crypto.randomBytes(16).toString('hex')
@@ -37,8 +43,11 @@ export async function GET(request: NextRequest) {
     // Store nonce in session/database for verification
     // In production, you'd want to store this securely
 
+    // Normalize shop domain - ensure it ends with .myshopify.com
+    const shopDomain = shop.includes('.myshopify.com') ? shop : `${shop}.myshopify.com`
+
     const redirectUri = `${APP_URL}/api/shopify/oauth`
-    const authUrl = `https://${shop}.myshopify.com/admin/oauth/authorize?` +
+    const authUrl = `https://${shopDomain}/admin/oauth/authorize?` +
       `client_id=${SHOPIFY_API_KEY}&` +
       `scope=${SCOPES}&` +
       `redirect_uri=${encodeURIComponent(redirectUri)}&` +
