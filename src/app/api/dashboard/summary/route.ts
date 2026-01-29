@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { cache, cacheKeys, cacheTTL } from '@/lib/cache'
 
 // Default payment fee configuration (used when no gateway-specific config exists)
 const DEFAULT_FEE_RATE = 2.9 // percentage
