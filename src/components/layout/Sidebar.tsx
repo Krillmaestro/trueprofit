@@ -23,7 +23,7 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 
 const navigation = [
-  { name: 'Dashboard', href: '/', icon: LayoutDashboard },
+  { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { name: 'Orders', href: '/orders', icon: ShoppingCart },
   { name: 'Products', href: '/products', icon: Package },
   { name: 'COGS', href: '/cogs', icon: DollarSign },
@@ -108,7 +108,7 @@ export function Sidebar() {
       <nav className="relative z-10 flex-1 px-3 py-4 space-y-1 overflow-y-auto scrollbar-thin">
         {navigation.map((item) => {
           const isActive = pathname === item.href ||
-            (item.href !== '/' && pathname.startsWith(item.href))
+            (item.href !== '/dashboard' && pathname.startsWith(item.href))
 
           return (
             <Link
