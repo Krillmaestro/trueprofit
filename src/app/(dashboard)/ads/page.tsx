@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -105,7 +105,7 @@ const platformConfig = {
   },
 }
 
-export default function AdsPage() {
+function AdsPageContent() {
   const searchParams = useSearchParams()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [adAccounts, setAdAccounts] = useState<AdAccount[]>([])
@@ -549,5 +549,17 @@ export default function AdsPage() {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+export default function AdsPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
+    }>
+      <AdsPageContent />
+    </Suspense>
   )
 }

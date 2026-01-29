@@ -7,9 +7,9 @@ import { GoogleAdsClient, refreshGoogleAccessToken } from '@/services/ads/google
 import crypto from 'crypto'
 
 const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || crypto.randomBytes(32).toString('hex')
-const GOOGLE_ADS_CLIENT_ID = process.env.GOOGLE_ADS_CLIENT_ID!
-const GOOGLE_ADS_CLIENT_SECRET = process.env.GOOGLE_ADS_CLIENT_SECRET!
-const GOOGLE_ADS_DEVELOPER_TOKEN = process.env.GOOGLE_ADS_DEVELOPER_TOKEN!
+const GOOGLE_ADS_CLIENT_ID = process.env.GOOGLE_ADS_CLIENT_ID || ''
+const GOOGLE_ADS_CLIENT_SECRET = process.env.GOOGLE_ADS_CLIENT_SECRET || ''
+const GOOGLE_ADS_DEVELOPER_TOKEN = process.env.GOOGLE_ADS_DEVELOPER_TOKEN || ''
 
 function decrypt(encryptedText: string): string {
   const [ivHex, encrypted] = encryptedText.split(':')
@@ -131,45 +131,57 @@ async function syncFacebookAds(
     const cpm = impressions > 0 ? (spend / impressions) * 1000 : 0
     const revenue = roas * spend
 
-    await prisma.adSpend.upsert({
+    const date = new Date(insight.date_start)
+    const campaignId = insight.campaign_id || null
+    const adSetId = insight.adset_id || null
+
+    // Find existing record
+    const existing = await prisma.adSpend.findFirst({
       where: {
-        adAccountId_date_campaignId_adSetId: {
-          adAccountId: adAccount.id,
-          date: new Date(insight.date_start),
-          campaignId: insight.campaign_id || null,
-          adSetId: insight.adset_id || null,
-        },
-      },
-      create: {
         adAccountId: adAccount.id,
-        date: new Date(insight.date_start),
-        spend,
-        impressions,
-        clicks,
-        conversions,
-        revenue,
-        roas,
-        cpc,
-        cpm,
-        currency: adAccount.currency,
-        campaignId: insight.campaign_id,
-        campaignName: insight.campaign_name,
-        adSetId: insight.adset_id,
-        adSetName: insight.adset_name,
-      },
-      update: {
-        spend,
-        impressions,
-        clicks,
-        conversions,
-        revenue,
-        roas,
-        cpc,
-        cpm,
-        campaignName: insight.campaign_name,
-        adSetName: insight.adset_name,
+        date,
+        campaignId,
+        adSetId,
       },
     })
+
+    if (existing) {
+      await prisma.adSpend.update({
+        where: { id: existing.id },
+        data: {
+          spend,
+          impressions,
+          clicks,
+          conversions,
+          revenue,
+          roas,
+          cpc,
+          cpm,
+          campaignName: insight.campaign_name || null,
+          adSetName: insight.adset_name || null,
+        },
+      })
+    } else {
+      await prisma.adSpend.create({
+        data: {
+          adAccountId: adAccount.id,
+          date,
+          spend,
+          impressions,
+          clicks,
+          conversions,
+          revenue,
+          roas,
+          cpc,
+          cpm,
+          currency: adAccount.currency,
+          campaignId,
+          campaignName: insight.campaign_name || null,
+          adSetId,
+          adSetName: insight.adset_name || null,
+        },
+      })
+    }
 
     count++
   }
@@ -189,6 +201,9 @@ async function syncGoogleAds(
   dateTo: string
 ): Promise<number> {
   if (!adAccount.accessTokenEncrypted) return 0
+  if (!GOOGLE_ADS_DEVELOPER_TOKEN) {
+    throw new Error('Google Ads developer token not configured')
+  }
 
   let accessToken = decrypt(adAccount.accessTokenEncrypted)
 
@@ -241,45 +256,57 @@ async function syncGoogleAds(
     const cpc = metric.clicks > 0 ? metric.cost / metric.clicks : 0
     const cpm = metric.impressions > 0 ? (metric.cost / metric.impressions) * 1000 : 0
 
-    await prisma.adSpend.upsert({
+    const date = new Date(metric.date)
+    const campaignId = metric.campaignId || null
+    const adSetId = metric.adGroupId || null
+
+    // Find existing record
+    const existing = await prisma.adSpend.findFirst({
       where: {
-        adAccountId_date_campaignId_adSetId: {
-          adAccountId: adAccount.id,
-          date: new Date(metric.date),
-          campaignId: metric.campaignId || null,
-          adSetId: metric.adGroupId || null,
-        },
-      },
-      create: {
         adAccountId: adAccount.id,
-        date: new Date(metric.date),
-        spend: metric.cost,
-        impressions: metric.impressions,
-        clicks: metric.clicks,
-        conversions: Math.round(metric.conversions),
-        revenue: metric.conversionValue,
-        roas,
-        cpc,
-        cpm,
-        currency: adAccount.currency,
-        campaignId: metric.campaignId,
-        campaignName: metric.campaignName,
-        adSetId: metric.adGroupId,
-        adSetName: metric.adGroupName,
-      },
-      update: {
-        spend: metric.cost,
-        impressions: metric.impressions,
-        clicks: metric.clicks,
-        conversions: Math.round(metric.conversions),
-        revenue: metric.conversionValue,
-        roas,
-        cpc,
-        cpm,
-        campaignName: metric.campaignName,
-        adSetName: metric.adGroupName,
+        date,
+        campaignId,
+        adSetId,
       },
     })
+
+    if (existing) {
+      await prisma.adSpend.update({
+        where: { id: existing.id },
+        data: {
+          spend: metric.cost,
+          impressions: metric.impressions,
+          clicks: metric.clicks,
+          conversions: Math.round(metric.conversions),
+          revenue: metric.conversionValue,
+          roas,
+          cpc,
+          cpm,
+          campaignName: metric.campaignName || null,
+          adSetName: metric.adGroupName || null,
+        },
+      })
+    } else {
+      await prisma.adSpend.create({
+        data: {
+          adAccountId: adAccount.id,
+          date,
+          spend: metric.cost,
+          impressions: metric.impressions,
+          clicks: metric.clicks,
+          conversions: Math.round(metric.conversions),
+          revenue: metric.conversionValue,
+          roas,
+          cpc,
+          cpm,
+          currency: adAccount.currency,
+          campaignId,
+          campaignName: metric.campaignName || null,
+          adSetId,
+          adSetName: metric.adGroupName || null,
+        },
+      })
+    }
 
     count++
   }

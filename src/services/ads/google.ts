@@ -87,7 +87,8 @@ export class GoogleAdsClient {
       FROM customer
     `
 
-    const response = await this.request<{ results: Array<{ customer: GoogleAdAccount }> }>(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const response = await this.request<{ results: Array<{ customer: any }> }>(
       `/customers/${customerId}/googleAds:searchStream`,
       'POST',
       { query }
@@ -95,10 +96,10 @@ export class GoogleAdsClient {
 
     const customer = response.results[0]?.customer
     return {
-      customerId: customer.id,
-      descriptiveName: customer.descriptiveName,
-      currencyCode: customer.currencyCode,
-      timeZone: customer.timeZone,
+      customerId: customer?.id || customerId,
+      descriptiveName: customer?.descriptive_name || customer?.descriptiveName || 'Unknown',
+      currencyCode: customer?.currency_code || customer?.currencyCode || 'USD',
+      timeZone: customer?.time_zone || customer?.timeZone || 'UTC',
     }
   }
 
