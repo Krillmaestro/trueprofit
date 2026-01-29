@@ -5,9 +5,10 @@ import { prisma } from '@/lib/prisma'
 import { GoogleAdsClient, exchangeGoogleAuthCode } from '@/services/ads/google'
 import crypto from 'crypto'
 
-const GOOGLE_ADS_CLIENT_ID = process.env.GOOGLE_ADS_CLIENT_ID!
-const GOOGLE_ADS_CLIENT_SECRET = process.env.GOOGLE_ADS_CLIENT_SECRET!
-const GOOGLE_ADS_DEVELOPER_TOKEN = process.env.GOOGLE_ADS_DEVELOPER_TOKEN!
+// Use Google Ads specific credentials if available, otherwise fall back to regular Google OAuth
+const GOOGLE_ADS_CLIENT_ID = process.env.GOOGLE_ADS_CLIENT_ID || process.env.GOOGLE_CLIENT_ID || ''
+const GOOGLE_ADS_CLIENT_SECRET = process.env.GOOGLE_ADS_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET || ''
+const GOOGLE_ADS_DEVELOPER_TOKEN = process.env.GOOGLE_ADS_DEVELOPER_TOKEN || ''
 const APP_URL = process.env.NEXTAUTH_URL || 'http://localhost:3000'
 
 // Encryption for storing tokens
@@ -37,6 +38,17 @@ export async function GET(request: NextRequest) {
   if (error) {
     console.error('Google Ads OAuth error:', error)
     return NextResponse.redirect(new URL('/ads?error=google_oauth_denied', APP_URL))
+  }
+
+  // Check if Google Ads is properly configured
+  if (!GOOGLE_ADS_CLIENT_ID || !GOOGLE_ADS_CLIENT_SECRET) {
+    console.error('Google Ads OAuth not configured: missing client credentials')
+    return NextResponse.redirect(new URL('/ads?error=google_not_configured', APP_URL))
+  }
+
+  if (!GOOGLE_ADS_DEVELOPER_TOKEN) {
+    console.error('Google Ads developer token not configured')
+    return NextResponse.redirect(new URL('/ads?error=google_developer_token_missing', APP_URL))
   }
 
   // Step 1: Initiate OAuth flow

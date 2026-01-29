@@ -133,6 +133,8 @@ function AdsPageContent() {
         no_team: 'No team found. Please set up your account first.',
         facebook_failed: 'Failed to connect Facebook Ads. Please try again.',
         google_failed: 'Failed to connect Google Ads. Please try again.',
+        google_not_configured: 'Google Ads integration is not configured. Please contact support.',
+        google_developer_token_missing: 'Google Ads developer token is missing. Please configure it in settings.',
       }
       setNotification({ type: 'error', message: errorMessages[error] || 'Connection failed. Please try again.' })
     }
