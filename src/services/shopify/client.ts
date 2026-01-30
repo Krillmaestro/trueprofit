@@ -115,6 +115,8 @@ export class ShopifyClient {
   }
 
   // Orders with pagination support
+  // Note: When page_info is present, Shopify ignores all other params except limit
+  // So we only send page_info OR the filter params, never both
   async getOrders(params?: {
     limit?: number
     page_info?: string
@@ -124,12 +126,19 @@ export class ShopifyClient {
     financial_status?: string
   }): Promise<PaginatedResponse<{ orders: ShopifyOrder[] }>> {
     const searchParams = new URLSearchParams()
-    if (params?.limit) searchParams.set('limit', params.limit.toString())
-    if (params?.page_info) searchParams.set('page_info', params.page_info)
-    if (params?.status) searchParams.set('status', params.status)
-    if (params?.created_at_min) searchParams.set('created_at_min', params.created_at_min)
-    if (params?.created_at_max) searchParams.set('created_at_max', params.created_at_max)
-    if (params?.financial_status) searchParams.set('financial_status', params.financial_status)
+
+    if (params?.page_info) {
+      // When using cursor pagination, only page_info and limit are allowed
+      searchParams.set('page_info', params.page_info)
+      if (params?.limit) searchParams.set('limit', params.limit.toString())
+    } else {
+      // First page - use all filter params
+      if (params?.limit) searchParams.set('limit', params.limit.toString())
+      if (params?.status) searchParams.set('status', params.status)
+      if (params?.created_at_min) searchParams.set('created_at_min', params.created_at_min)
+      if (params?.created_at_max) searchParams.set('created_at_max', params.created_at_max)
+      if (params?.financial_status) searchParams.set('financial_status', params.financial_status)
+    }
 
     const query = searchParams.toString() ? `?${searchParams}` : ''
     return this.paginatedRequest<{ orders: ShopifyOrder[] }>(`/orders.json${query}`)
