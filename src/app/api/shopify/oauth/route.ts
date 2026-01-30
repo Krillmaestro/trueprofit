@@ -27,19 +27,22 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(new URL('/login', APP_URL))
   }
 
-  // Apply rate limiting for OAuth initiations
-  const rateLimitKey = getRateLimitKey(request, session.user.id)
-  const rateLimitResult = oauthRateLimiter(rateLimitKey)
-
-  if (rateLimitResult.limited) {
-    return NextResponse.redirect(new URL('/settings/stores?error=rate_limited', APP_URL))
-  }
-
   const searchParams = request.nextUrl.searchParams
   const shop = searchParams.get('shop')
   const code = searchParams.get('code')
   const state = searchParams.get('state')
   const hmac = searchParams.get('hmac')
+
+  // Only apply rate limiting for OAuth initiations (not callbacks)
+  const isCallback = code && hmac
+  if (!isCallback) {
+    const rateLimitKey = getRateLimitKey(request, session.user.id)
+    const rateLimitResult = oauthRateLimiter(rateLimitKey)
+
+    if (rateLimitResult.limited) {
+      return NextResponse.redirect(new URL('/settings/stores?error=rate_limited', APP_URL))
+    }
+  }
 
   // Check if Shopify is configured
   if (!SHOPIFY_API_KEY || !SHOPIFY_API_SECRET) {
