@@ -225,17 +225,19 @@ enum SyncStatus {
 // ===========================================
 
 model Product {
-  id               String   @id @default(cuid())
-  storeId          String   @map("store_id")
-  shopifyProductId BigInt   @map("shopify_product_id")
-  title            String
-  handle           String?
-  vendor           String?
-  productType      String?  @map("product_type")
-  status           String   @default("active")
-  imageUrl         String?  @map("image_url")
-  createdAt        DateTime @default(now()) @map("created_at")
-  updatedAt        DateTime @updatedAt @map("updated_at")
+  id                String   @id @default(cuid())
+  storeId           String   @map("store_id")
+  shopifyProductId  BigInt   @map("shopify_product_id")
+  title             String
+  handle            String?
+  vendor            String?
+  productType       String?  @map("product_type")
+  status            String   @default("active")
+  imageUrl          String?  @map("image_url")
+  isShippingExempt  Boolean  @default(false) @map("is_shipping_exempt") // Digital products, e-books - no shipping cost
+  isHiddenFromStock Boolean  @default(false) @map("is_hidden_from_stock") // Hide bundles from inventory display
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
 
   store    Store            @relation(fields: [storeId], references: [id], onDelete: Cascade)
   variants ProductVariant[]

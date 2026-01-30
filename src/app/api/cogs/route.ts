@@ -13,6 +13,7 @@ export async function GET(request: NextRequest) {
 
   const searchParams = request.nextUrl.searchParams
   const storeId = searchParams.get('storeId')
+  const includeHidden = searchParams.get('includeHidden') === 'true'
 
   // Get user's team
   const teamMember = await prisma.teamMember.findFirst({
@@ -23,13 +24,23 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'No team found' }, { status: 404 })
   }
 
-  const storeFilter = storeId
+  // Build product filter - optionally exclude hidden products
+  const productFilter: {
+    storeId?: string
+    store?: { teamId: string }
+    isHiddenFromStock?: boolean
+  } = storeId
     ? { storeId }
     : { store: { teamId: teamMember.teamId } }
 
+  // By default, exclude hidden products unless includeHidden=true
+  if (!includeHidden) {
+    productFilter.isHiddenFromStock = false
+  }
+
   const variants = await prisma.productVariant.findMany({
     where: {
-      product: storeFilter,
+      product: productFilter,
     },
     include: {
       product: {
@@ -37,6 +48,8 @@ export async function GET(request: NextRequest) {
           id: true,
           title: true,
           imageUrl: true,
+          isShippingExempt: true,
+          isHiddenFromStock: true,
           store: {
             select: {
               id: true,
@@ -77,6 +90,8 @@ export async function GET(request: NextRequest) {
       } : null,
       hasCogs: v.cogsEntries.length > 0,
       vatRate: Number(v.vatRate), // Convert Decimal to number
+      isShippingExempt: v.product.isShippingExempt,
+      isHiddenFromStock: v.product.isHiddenFromStock,
     }
   })
 

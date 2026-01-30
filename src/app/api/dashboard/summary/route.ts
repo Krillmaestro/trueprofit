@@ -121,6 +121,11 @@ export async function GET(request: NextRequest) {
                 where: { effectiveTo: null },
                 take: 1,
               },
+              product: {
+                select: {
+                  isShippingExempt: true,
+                },
+              },
             },
           },
         },
@@ -149,10 +154,18 @@ export async function GET(request: NextRequest) {
     totalDiscounts += Number(order.totalDiscounts)
 
     // Calculate our shipping cost based on tiers
+    // Only count physical products (exclude shipping-exempt items like e-books)
     const storeTiers = storeShippingTiers.get(order.storeId)
     if (storeTiers && storeTiers.length > 0) {
-      const orderItemCount = order.lineItems.reduce((sum, item) => sum + item.quantity, 0)
-      totalShippingCost += calculateShippingCost(orderItemCount, storeTiers)
+      const physicalItemCount = order.lineItems.reduce((sum, item) => {
+        // Skip items where the product is shipping-exempt
+        const isExempt = item.variant?.product?.isShippingExempt || false
+        return sum + (isExempt ? 0 : item.quantity)
+      }, 0)
+      // Only calculate shipping if there are physical items
+      if (physicalItemCount > 0) {
+        totalShippingCost += calculateShippingCost(physicalItemCount, storeTiers)
+      }
     }
 
     // Calculate refunds from actual refund records

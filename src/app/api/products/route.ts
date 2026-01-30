@@ -217,3 +217,69 @@ export async function GET(request: NextRequest) {
     },
   })
 }
+
+// PATCH /api/products - Update product flags (shipping-exempt, hidden from stock)
+export async function PATCH(request: NextRequest) {
+  const session = await getServerSession(authOptions)
+
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  const body = await request.json()
+  const { productId, isShippingExempt, isHiddenFromStock } = body
+
+  if (!productId) {
+    return NextResponse.json({ error: 'productId is required' }, { status: 400 })
+  }
+
+  // Verify access to the product
+  const teamMember = await prisma.teamMember.findFirst({
+    where: { userId: session.user.id },
+  })
+
+  if (!teamMember) {
+    return NextResponse.json({ error: 'No team found' }, { status: 404 })
+  }
+
+  const product = await prisma.product.findFirst({
+    where: {
+      id: productId,
+      store: {
+        teamId: teamMember.teamId,
+      },
+    },
+  })
+
+  if (!product) {
+    return NextResponse.json({ error: 'Product not found or access denied' }, { status: 404 })
+  }
+
+  // Build update data
+  const updateData: { isShippingExempt?: boolean; isHiddenFromStock?: boolean } = {}
+
+  if (typeof isShippingExempt === 'boolean') {
+    updateData.isShippingExempt = isShippingExempt
+  }
+
+  if (typeof isHiddenFromStock === 'boolean') {
+    updateData.isHiddenFromStock = isHiddenFromStock
+  }
+
+  if (Object.keys(updateData).length === 0) {
+    return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 })
+  }
+
+  const updatedProduct = await prisma.product.update({
+    where: { id: productId },
+    data: updateData,
+    select: {
+      id: true,
+      title: true,
+      isShippingExempt: true,
+      isHiddenFromStock: true,
+    },
+  })
+
+  return NextResponse.json(updatedProduct)
+}

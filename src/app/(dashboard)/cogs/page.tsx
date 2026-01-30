@@ -21,7 +21,8 @@ import {
 } from "@/components/ui/select"
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Search, Upload, Download, DollarSign, Package, TrendingUp, Save, Loader2 } from 'lucide-react'
+import { Search, Upload, Download, DollarSign, Package, TrendingUp, Save, Loader2, Eye, EyeOff, Truck, BookOpen } from 'lucide-react'
+import { useToast } from '@/components/ui/toast'
 
 interface ProductCOGS {
   variantId: string
@@ -37,6 +38,8 @@ interface ProductCOGS {
   cogs: { costPrice: number; source: string } | null
   hasCogs: boolean
   vatRate: number
+  isShippingExempt: boolean
+  isHiddenFromStock: boolean
 }
 
 // Swedish VAT rates
@@ -52,11 +55,13 @@ export default function COGSPage() {
   const [products, setProducts] = useState<ProductCOGS[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState<string | null>(null)
+  const [showHidden, setShowHidden] = useState(false)
   const [pendingChanges, setPendingChanges] = useState<Map<string, { cogs?: number; vatRate?: number }>>(new Map())
+  const { addToast } = useToast()
 
   const fetchProducts = useCallback(async () => {
     try {
-      const res = await fetch('/api/cogs')
+      const res = await fetch(`/api/cogs?includeHidden=${showHidden}`)
       if (res.ok) {
         const data = await res.json()
         setProducts(data)
@@ -66,7 +71,7 @@ export default function COGSPage() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [showHidden])
 
   useEffect(() => {
     fetchProducts()
@@ -165,6 +170,79 @@ export default function COGSPage() {
     return price > 0 ? ((price - cogs) / price) * 100 : 0
   }
 
+  const toggleShippingExempt = async (productId: string, currentValue: boolean) => {
+    try {
+      const res = await fetch('/api/products', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          productId,
+          isShippingExempt: !currentValue,
+        }),
+      })
+
+      if (res.ok) {
+        setProducts(prev => prev.map(p => {
+          if (p.productId === productId) {
+            return { ...p, isShippingExempt: !currentValue }
+          }
+          return p
+        }))
+        addToast({
+          type: 'success',
+          title: 'Updated',
+          message: !currentValue ? 'Product marked as shipping exempt (digital)' : 'Product requires shipping',
+        })
+      }
+    } catch (error) {
+      console.error('Failed to toggle shipping exempt:', error)
+      addToast({
+        type: 'error',
+        title: 'Error',
+        message: 'Failed to update product',
+      })
+    }
+  }
+
+  const toggleHiddenFromStock = async (productId: string, currentValue: boolean) => {
+    try {
+      const res = await fetch('/api/products', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          productId,
+          isHiddenFromStock: !currentValue,
+        }),
+      })
+
+      if (res.ok) {
+        if (!currentValue && !showHidden) {
+          // If hiding and not showing hidden, remove from list
+          setProducts(prev => prev.filter(p => p.productId !== productId))
+        } else {
+          setProducts(prev => prev.map(p => {
+            if (p.productId === productId) {
+              return { ...p, isHiddenFromStock: !currentValue }
+            }
+            return p
+          }))
+        }
+        addToast({
+          type: 'success',
+          title: 'Updated',
+          message: !currentValue ? 'Product hidden from inventory' : 'Product visible in inventory',
+        })
+      }
+    } catch (error) {
+      console.error('Failed to toggle hidden:', error)
+      addToast({
+        type: 'error',
+        title: 'Error',
+        message: 'Failed to update product',
+      })
+    }
+  }
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -196,6 +274,13 @@ export default function COGSPage() {
           <p className="text-slate-600">Manage Cost of Goods Sold and VAT for your products</p>
         </div>
         <div className="flex gap-2">
+          <Button
+            variant={showHidden ? 'default' : 'outline'}
+            onClick={() => setShowHidden(!showHidden)}
+          >
+            {showHidden ? <Eye className="w-4 h-4 mr-2" /> : <EyeOff className="w-4 h-4 mr-2" />}
+            {showHidden ? 'Showing Hidden' : 'Show Hidden'}
+          </Button>
           <Button variant="outline">
             <Download className="w-4 h-4 mr-2" />
             Export
@@ -305,7 +390,7 @@ export default function COGSPage() {
                   <TableHead className="text-right">Margin</TableHead>
                   <TableHead className="text-right">Stock</TableHead>
                   <TableHead className="text-right">Inventory Value</TableHead>
-                  <TableHead></TableHead>
+                  <TableHead className="text-center">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -327,11 +412,25 @@ export default function COGSPage() {
                             </span>
                           )}
                         </div>
-                        {product.cogs?.source === 'SHOPIFY_COST' && (
-                          <Badge variant="outline" className="text-xs mt-1">
-                            From Shopify
-                          </Badge>
-                        )}
+                        <div className="flex gap-1 mt-1 flex-wrap">
+                          {product.cogs?.source === 'SHOPIFY_COST' && (
+                            <Badge variant="outline" className="text-xs">
+                              From Shopify
+                            </Badge>
+                          )}
+                          {product.isShippingExempt && (
+                            <Badge variant="secondary" className="text-xs bg-blue-100 text-blue-700">
+                              <BookOpen className="w-3 h-3 mr-1" />
+                              Digital
+                            </Badge>
+                          )}
+                          {product.isHiddenFromStock && (
+                            <Badge variant="secondary" className="text-xs bg-amber-100 text-amber-700">
+                              <EyeOff className="w-3 h-3 mr-1" />
+                              Hidden
+                            </Badge>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell>
                         {product.sku && <Badge variant="outline">{product.sku}</Badge>}
@@ -374,19 +473,40 @@ export default function COGSPage() {
                         {(currentCogs * product.inventoryQuantity).toLocaleString('sv-SE')} kr
                       </TableCell>
                       <TableCell>
-                        {hasChanges && (
+                        <div className="flex gap-1 justify-end">
+                          {hasChanges && (
+                            <Button
+                              size="sm"
+                              onClick={() => saveChanges(product.variantId)}
+                              disabled={saving === product.variantId}
+                              title="Save COGS changes"
+                            >
+                              {saving === product.variantId ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <Save className="w-4 h-4" />
+                              )}
+                            </Button>
+                          )}
                           <Button
                             size="sm"
-                            onClick={() => saveChanges(product.variantId)}
-                            disabled={saving === product.variantId}
+                            variant={product.isShippingExempt ? 'default' : 'outline'}
+                            onClick={() => toggleShippingExempt(product.productId, product.isShippingExempt)}
+                            title={product.isShippingExempt ? 'Requires shipping' : 'No shipping (digital)'}
+                            className={product.isShippingExempt ? 'bg-blue-500 hover:bg-blue-600' : ''}
                           >
-                            {saving === product.variantId ? (
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                            ) : (
-                              <Save className="w-4 h-4" />
-                            )}
+                            <BookOpen className="w-4 h-4" />
                           </Button>
-                        )}
+                          <Button
+                            size="sm"
+                            variant={product.isHiddenFromStock ? 'default' : 'outline'}
+                            onClick={() => toggleHiddenFromStock(product.productId, product.isHiddenFromStock)}
+                            title={product.isHiddenFromStock ? 'Show in inventory' : 'Hide from inventory'}
+                            className={product.isHiddenFromStock ? 'bg-amber-500 hover:bg-amber-600' : ''}
+                          >
+                            {product.isHiddenFromStock ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   )
