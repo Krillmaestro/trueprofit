@@ -12,6 +12,9 @@ const SHOPIFY_API_DELAY_MS = 600
 // Helper to delay between API calls to avoid rate limiting
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
+// Track active sync jobs (in production, use Redis or database)
+const activeSyncs = new Map<string, { status: 'running' | 'completed' | 'failed'; progress?: string; result?: unknown; error?: string }>()
+
 export async function POST(request: NextRequest) {
   const session = await getServerSession(authOptions)
 
@@ -33,7 +36,7 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  const { storeId, type } = await request.json()
+  const { storeId, type, background, incremental } = await request.json()
 
   // Get store and verify access
   const store = await prisma.store.findFirst({
@@ -61,6 +64,46 @@ export async function POST(request: NextRequest) {
     accessToken,
   })
 
+  // For incremental sync, use lastSyncAt if available
+  // Otherwise start from January 1st, 2026
+  const sinceDateForOrders = incremental && store.lastSyncAt
+    ? store.lastSyncAt
+    : new Date('2026-01-01T00:00:00Z')
+
+  // Background sync: start the job and return immediately
+  if (background) {
+    const syncId = `${storeId}-${Date.now()}`
+
+    // Check if there's already a running sync for this store
+    for (const [key, value] of activeSyncs.entries()) {
+      if (key.startsWith(storeId) && value.status === 'running') {
+        return NextResponse.json({
+          error: 'Sync already in progress',
+          syncId: key
+        }, { status: 409 })
+      }
+    }
+
+    activeSyncs.set(syncId, { status: 'running', progress: 'Starting sync...' })
+
+    // Start sync in background (fire and forget)
+    runBackgroundSync(syncId, store.id, client, type, sinceDateForOrders).catch(err => {
+      console.error('Background sync error:', err)
+      activeSyncs.set(syncId, {
+        status: 'failed',
+        error: err instanceof Error ? err.message : 'Unknown error'
+      })
+    })
+
+    return NextResponse.json({
+      success: true,
+      syncId,
+      message: 'Sync started in background. You can leave this page.',
+      checkStatusUrl: `/api/shopify/sync/status?syncId=${syncId}`
+    })
+  }
+
+  // Foreground sync (original behavior)
   try {
     let syncedCount = 0
     const syncDetails: { products?: number; orders?: number; transactions?: number; refunds?: number } = {}
@@ -72,7 +115,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (type === 'orders' || type === 'all') {
-      const { orders, transactions, refunds } = await syncOrders(store.id, client)
+      const { orders, transactions, refunds } = await syncOrders(store.id, client, sinceDateForOrders)
       syncedCount += orders
       syncDetails.orders = orders
       syncDetails.transactions = transactions
@@ -97,6 +140,88 @@ export async function POST(request: NextRequest) {
       error: 'Sync failed',
       details: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 })
+  }
+}
+
+// GET endpoint to check sync status
+export async function GET(request: NextRequest) {
+  const session = await getServerSession(authOptions)
+
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  const syncId = request.nextUrl.searchParams.get('syncId')
+
+  if (!syncId) {
+    return NextResponse.json({ error: 'Missing syncId' }, { status: 400 })
+  }
+
+  const syncStatus = activeSyncs.get(syncId)
+
+  if (!syncStatus) {
+    return NextResponse.json({ error: 'Sync not found' }, { status: 404 })
+  }
+
+  return NextResponse.json(syncStatus)
+}
+
+// Background sync runner
+async function runBackgroundSync(
+  syncId: string,
+  storeId: string,
+  client: ShopifyClient,
+  type: string,
+  sinceDate: Date
+) {
+  try {
+    let syncedCount = 0
+    const syncDetails: { products?: number; orders?: number; transactions?: number; refunds?: number } = {}
+
+    if (type === 'products' || type === 'all') {
+      activeSyncs.set(syncId, { status: 'running', progress: 'Syncing products...' })
+      const productCount = await syncProducts(storeId, client)
+      syncedCount += productCount
+      syncDetails.products = productCount
+    }
+
+    if (type === 'orders' || type === 'all') {
+      activeSyncs.set(syncId, { status: 'running', progress: 'Syncing orders...' })
+      const { orders, transactions, refunds } = await syncOrders(storeId, client, sinceDate)
+      syncedCount += orders
+      syncDetails.orders = orders
+      syncDetails.transactions = transactions
+      syncDetails.refunds = refunds
+    }
+
+    // Update last sync time
+    await prisma.store.update({
+      where: { id: storeId },
+      data: { lastSyncAt: new Date() },
+    })
+
+    activeSyncs.set(syncId, {
+      status: 'completed',
+      result: {
+        success: true,
+        syncedCount,
+        details: syncDetails,
+        message: `Synced ${syncedCount} items`
+      }
+    })
+
+    // Clean up after 5 minutes
+    setTimeout(() => activeSyncs.delete(syncId), 5 * 60 * 1000)
+
+  } catch (error) {
+    console.error('Background sync error:', error)
+    activeSyncs.set(syncId, {
+      status: 'failed',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    })
+
+    // Clean up after 5 minutes
+    setTimeout(() => activeSyncs.delete(syncId), 5 * 60 * 1000)
   }
 }
 
@@ -178,14 +303,14 @@ async function syncProducts(storeId: string, client: ShopifyClient): Promise<num
   return count
 }
 
-async function syncOrders(storeId: string, client: ShopifyClient): Promise<{ orders: number; transactions: number; refunds: number }> {
+async function syncOrders(storeId: string, client: ShopifyClient, sinceDate: Date): Promise<{ orders: number; transactions: number; refunds: number }> {
   let orderCount = 0
   let transactionCount = 0
   let refundCount = 0
   let pageInfo: string | undefined
 
-  // Get all orders from January 1st, 2026 onwards
-  const sinceDate = new Date('2026-01-01T00:00:00Z')
+  // Use the provided sinceDate for incremental sync
+  console.log(`Syncing orders since: ${sinceDate.toISOString()}`)
 
   // Pre-fetch all variants for this store to avoid N+1 queries
   // This is more efficient than querying for each line item individually

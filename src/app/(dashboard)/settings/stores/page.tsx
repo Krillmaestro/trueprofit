@@ -48,6 +48,7 @@ export default function StoresPage() {
   const [stores, setStores] = useState<StoreData[]>([])
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState<string | null>(null)
+  const [syncStatus, setSyncStatus] = useState<{ message: string; type: 'info' | 'success' | 'error' } | null>(null)
   const [disconnecting, setDisconnecting] = useState<string | null>(null)
   const [confirmDisconnect, setConfirmDisconnect] = useState<StoreData | null>(null)
   const [connecting, setConnecting] = useState(false)
@@ -84,28 +85,107 @@ export default function StoresPage() {
     window.location.href = `/api/shopify/oauth?shop=${fullDomain}`
   }
 
-  const handleSync = async (storeId: string) => {
+  const handleSync = async (storeId: string, incremental: boolean = true) => {
     setSyncing(storeId)
+    setSyncStatus({ message: 'Startar synkronisering...', type: 'info' })
+
     try {
       const res = await fetch('/api/shopify/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ storeId, type: 'all' }),
+        body: JSON.stringify({
+          storeId,
+          type: 'all',
+          background: true,
+          incremental, // Only sync new data since last sync
+        }),
       })
 
-      if (res.ok) {
-        // Refresh stores list
-        await fetchStores()
+      const data = await res.json()
+
+      if (res.ok && data.syncId) {
+        setSyncStatus({
+          message: 'Synkronisering startad! Du kan lämna sidan - syncen fortsätter i bakgrunden.',
+          type: 'success'
+        })
+
+        // Poll for status updates
+        pollSyncStatus(data.syncId, storeId)
       } else {
-        const data = await res.json()
-        alert(`Sync failed: ${data.error || 'Unknown error'}`)
+        setSyncStatus({
+          message: `Sync failed: ${data.error || 'Unknown error'}`,
+          type: 'error'
+        })
+        setSyncing(null)
       }
     } catch (error) {
       console.error('Sync failed:', error)
-      alert('Sync failed. Please try again.')
-    } finally {
+      setSyncStatus({
+        message: 'Sync failed. Please try again.',
+        type: 'error'
+      })
       setSyncing(null)
     }
+  }
+
+  const pollSyncStatus = async (syncId: string, storeId: string) => {
+    const maxAttempts = 120 // 10 minutes max (5 second intervals)
+    let attempts = 0
+
+    const checkStatus = async () => {
+      try {
+        const res = await fetch(`/api/shopify/sync?syncId=${syncId}`)
+        const data = await res.json()
+
+        if (data.status === 'completed') {
+          setSyncStatus({
+            message: `Synkronisering klar! ${data.result?.message || ''}`,
+            type: 'success'
+          })
+          setSyncing(null)
+          await fetchStores() // Refresh data
+          // Auto-hide success message after 5 seconds
+          setTimeout(() => setSyncStatus(null), 5000)
+          return
+        }
+
+        if (data.status === 'failed') {
+          setSyncStatus({
+            message: `Sync misslyckades: ${data.error || 'Unknown error'}`,
+            type: 'error'
+          })
+          setSyncing(null)
+          return
+        }
+
+        if (data.status === 'running') {
+          setSyncStatus({
+            message: data.progress || 'Synkroniserar...',
+            type: 'info'
+          })
+        }
+
+        // Continue polling
+        attempts++
+        if (attempts < maxAttempts) {
+          setTimeout(checkStatus, 5000) // Check every 5 seconds
+        } else {
+          setSyncStatus({
+            message: 'Synken tar lång tid. Kontrollera status senare.',
+            type: 'info'
+          })
+          setSyncing(null)
+        }
+      } catch {
+        // Network error, but sync may still be running
+        attempts++
+        if (attempts < maxAttempts) {
+          setTimeout(checkStatus, 5000)
+        }
+      }
+    }
+
+    checkStatus()
   }
 
   const handleDisconnect = async (store: StoreData) => {
@@ -228,6 +308,28 @@ export default function StoresPage() {
         </Dialog>
       </div>
 
+      {/* Sync status banner */}
+      {syncStatus && (
+        <div className={`p-4 rounded-lg flex items-center gap-3 ${
+          syncStatus.type === 'success' ? 'bg-green-50 text-green-800 border border-green-200' :
+          syncStatus.type === 'error' ? 'bg-red-50 text-red-800 border border-red-200' :
+          'bg-blue-50 text-blue-800 border border-blue-200'
+        }`}>
+          {syncStatus.type === 'info' && <Loader2 className="w-5 h-5 animate-spin" />}
+          {syncStatus.type === 'success' && <CheckCircle className="w-5 h-5" />}
+          {syncStatus.type === 'error' && <XCircle className="w-5 h-5" />}
+          <span>{syncStatus.message}</span>
+          {syncStatus.type !== 'info' && (
+            <button
+              onClick={() => setSyncStatus(null)}
+              className="ml-auto text-sm underline hover:no-underline"
+            >
+              Stäng
+            </button>
+          )}
+        </div>
+      )}
+
       {stores.length === 0 ? (
         <EmptyState
           type="store"
@@ -287,12 +389,13 @@ export default function StoresPage() {
                     <p className="text-lg font-semibold">{formatDate(store.lastSyncAt)}</p>
                   </div>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => handleSync(store.id)}
+                    onClick={() => handleSync(store.id, true)}
                     disabled={syncing === store.id || !store.isActive}
+                    title="Synkar endast nya/uppdaterade ordrar sedan förra synken"
                   >
                     {syncing === store.id ? (
                       <>
@@ -302,9 +405,18 @@ export default function StoresPage() {
                     ) : (
                       <>
                         <RefreshCw className="w-4 h-4 mr-2" />
-                        Synka nu
+                        Snabb synk
                       </>
                     )}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleSync(store.id, false)}
+                    disabled={syncing === store.id || !store.isActive}
+                    title="Synkar alla ordrar från 2026 (tar längre tid)"
+                  >
+                    Full synk
                   </Button>
                   <Button
                     variant="outline"
