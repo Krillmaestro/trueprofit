@@ -90,7 +90,7 @@ export default function StoresPage() {
       const res = await fetch('/api/shopify/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ storeId }),
+        body: JSON.stringify({ storeId, type: 'all' }),
       })
 
       if (res.ok) {
