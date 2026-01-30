@@ -82,11 +82,14 @@ export async function GET(request: NextRequest) {
   }
 
   // Get orders in date range with transactions
+  // Include all orders except completely refunded or voided ones
+  // This ensures subscription orders and other payment types are included
   const orders = await prisma.order.findMany({
     where: {
       storeId: { in: storeIds },
       processedAt: dateFilter,
-      financialStatus: { in: ['paid', 'partially_paid', 'partially_refunded'] },
+      financialStatus: { notIn: ['refunded', 'voided'] },
+      cancelledAt: null, // Exclude cancelled orders
     },
     include: {
       lineItems: {
@@ -231,7 +234,8 @@ export async function GET(request: NextRequest) {
     where: {
       storeId: { in: storeIds },
       processedAt: dateFilter,
-      financialStatus: { in: ['paid', 'partially_paid', 'partially_refunded'] },
+      financialStatus: { notIn: ['refunded', 'voided'] },
+      cancelledAt: null,
     },
     _sum: {
       subtotalPrice: true,
