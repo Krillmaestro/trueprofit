@@ -16,6 +16,9 @@ import { BreakEvenCard } from '@/components/dashboard/BreakEvenCard'
 import { BreakEvenRoasCard } from '@/components/dashboard/BreakEvenRoasCard'
 import { BenchmarkCard } from '@/components/dashboard/BenchmarkCard'
 import { HeroStatCard } from '@/components/dashboard/HeroStatCard'
+import { ChannelAttributionCard } from '@/components/dashboard/ChannelAttributionCard'
+import { AdsPlatformStats } from '@/components/dashboard/AdsPlatformStats'
+import { CustomerMetricsCard } from '@/components/dashboard/CustomerMetricsCard'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
   DollarSign,
@@ -445,6 +448,8 @@ export default function DashboardPage() {
         {/* Break-Even ROAS Hero */}
         <BreakEvenRoasCard
           revenue={displayData.summary.revenue}
+          revenueExVat={displayData.summary.revenueExVat}
+          vat={displayData.summary.tax || displayData.breakdown.revenue.tax}
           adSpend={displayData.ads.spend}
           adRevenue={displayData.ads.revenue}
           cogs={displayData.breakdown.costs.cogs}
@@ -542,6 +547,7 @@ export default function DashboardPage() {
           iconColor="text-indigo-600"
           loading={loading}
           compact
+          decimals={2}
         />
       </div>
 
@@ -549,6 +555,15 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 gap-6">
         {/* Revenue Flow Chart - Full width */}
         <RevenueFlowChart data={profitChartData} loading={loading} />
+      </div>
+
+      {/* Ads Platform Stats - Google & Facebook separat */}
+      <div>
+        <h2 className="text-lg font-semibold text-slate-800 mb-3">Annonsplattformar</h2>
+        <AdsPlatformStats
+          startDate={dateRange.startDate.toISOString()}
+          endDate={dateRange.endDate.toISOString()}
+        />
       </div>
 
       {/* Bottom Row */}
@@ -561,7 +576,12 @@ export default function DashboardPage() {
         />
 
         {/* Top Products */}
-        <TopProductsCard products={topProducts.length > 0 ? topProducts : demoTopProducts} loading={topProductsLoading} />
+        <TopProductsCard
+          products={topProducts.length > 0 ? topProducts : demoTopProducts}
+          loading={topProductsLoading}
+          startDate={dateRange.startDate.toISOString()}
+          endDate={dateRange.endDate.toISOString()}
+        />
       </div>
 
       {/* Analytics Row */}
@@ -595,8 +615,15 @@ export default function DashboardPage() {
         />
       </div>
 
-      {/* Profit Meter Row */}
+      {/* Customer Metrics + Profit Meter Row */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        {/* Customer Metrics - LTV, CAC, Repeat Rate */}
+        <CustomerMetricsCard
+          startDate={dateRange.startDate.toISOString()}
+          endDate={dateRange.endDate.toISOString()}
+        />
+
+        {/* Profit Health */}
         <GlowCard className="p-6" glowColor="emerald">
           <h2 className="text-lg font-semibold text-slate-800 mb-2">Vinsthälsa</h2>
           <p className="text-sm text-slate-500 mb-4">Din nuvarande lönsamhet i en överblick</p>

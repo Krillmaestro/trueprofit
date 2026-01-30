@@ -12,7 +12,9 @@ import {
 } from '@/components/ui/tooltip'
 
 interface BreakEvenRoasCardProps {
-  revenue: number
+  revenue: number       // Gross revenue (inkl VAT)
+  revenueExVat?: number // Revenue excluding VAT (if available)
+  vat?: number          // VAT amount
   adSpend: number
   adRevenue: number
   cogs: number
@@ -23,6 +25,8 @@ interface BreakEvenRoasCardProps {
 
 export function BreakEvenRoasCard({
   revenue,
+  revenueExVat,
+  vat,
   adSpend,
   adRevenue,
   cogs,
@@ -31,9 +35,13 @@ export function BreakEvenRoasCard({
   className,
 }: BreakEvenRoasCardProps) {
   const analysis = useMemo(() => {
-    // Beräkna variabla kostnader som procent av revenue
+    // Använd revenue exkl VAT för korrekt break-even beräkning
+    // VAT är inte en kostnad vi behåller - den går till staten
+    const netRevenue = revenueExVat ?? (vat ? revenue - vat : revenue * 0.8)  // Fallback: anta 20% VAT (25% moms)
+
+    // Beräkna variabla kostnader som procent av revenue (exkl VAT)
     const variableCosts = cogs + fees + shippingCost
-    const variableCostRatio = revenue > 0 ? variableCosts / revenue : 0
+    const variableCostRatio = netRevenue > 0 ? variableCosts / netRevenue : 0
 
     // Break-Even ROAS formel:
     // För att gå plus måste: Ad Revenue > Ad Spend + (Ad Revenue × Variable Cost Ratio)
@@ -63,7 +71,7 @@ export function BreakEvenRoasCard({
       variableCostRatio,
       contributionMarginRatio,
     }
-  }, [revenue, adSpend, adRevenue, cogs, fees, shippingCost])
+  }, [revenue, revenueExVat, vat, adSpend, adRevenue, cogs, fees, shippingCost])
 
   const formatRoas = (value: number) => {
     if (value >= 100) return '99+'

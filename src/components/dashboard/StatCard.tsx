@@ -18,6 +18,7 @@ interface StatCardProps {
   trend?: number[]
   loading?: boolean
   compact?: boolean
+  decimals?: number  // Number of decimal places to show
 }
 
 export function StatCard({
@@ -32,6 +33,7 @@ export function StatCard({
   trend,
   loading = false,
   compact = false,
+  decimals,
 }: StatCardProps) {
   const change = previousValue !== undefined ? ((value - previousValue) / previousValue) * 100 : undefined
   const isPositive = change !== undefined && change > 0
@@ -70,7 +72,15 @@ export function StatCard({
 
           <div className="flex items-baseline gap-1">
             <span className="text-2xl font-bold text-slate-800 tracking-tight">
-              <AnimatedNumber value={value} prefix={prefix} suffix={suffix} />
+              <AnimatedNumber
+                value={value}
+                prefix={prefix}
+                suffix={suffix}
+                formatOptions={decimals !== undefined ? {
+                  minimumFractionDigits: decimals,
+                  maximumFractionDigits: decimals,
+                } : undefined}
+              />
             </span>
           </div>
 
