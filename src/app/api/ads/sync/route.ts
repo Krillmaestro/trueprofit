@@ -5,12 +5,11 @@ import { prisma } from '@/lib/prisma'
 import { encrypt, decrypt } from '@/lib/encryption'
 import { syncRateLimiter, getRateLimitKey, getRateLimitHeaders } from '@/lib/rate-limit'
 import { FacebookAdsClient, extractConversions, extractRoas } from '@/services/ads/facebook'
-import { GoogleAdsClient, refreshGoogleAccessToken } from '@/services/ads/google'
+import { GoogleSheetsAdsClient, refreshGoogleSheetsToken } from '@/services/ads/google-sheets'
 
-// Use Google Ads specific credentials if available, otherwise fall back to regular Google OAuth
-const GOOGLE_ADS_CLIENT_ID = process.env.GOOGLE_ADS_CLIENT_ID || process.env.GOOGLE_CLIENT_ID || ''
-const GOOGLE_ADS_CLIENT_SECRET = process.env.GOOGLE_ADS_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET || ''
-const GOOGLE_ADS_DEVELOPER_TOKEN = process.env.GOOGLE_ADS_DEVELOPER_TOKEN || ''
+// Google OAuth credentials for Sheets integration
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || ''
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || ''
 
 export async function POST(request: NextRequest) {
   const session = await getServerSession(authOptions)
@@ -185,6 +184,12 @@ async function syncFacebookAds(
   return count
 }
 
+/**
+ * Sync Google Ads data via Google Sheets
+ *
+ * Google Ads konton som är kopplade via Sheets har platformAccountId som börjar med "sheets:"
+ * eller är ett spreadsheet ID direkt.
+ */
 async function syncGoogleAds(
   adAccount: {
     id: string
@@ -197,9 +202,12 @@ async function syncGoogleAds(
   dateTo: string
 ): Promise<number> {
   if (!adAccount.accessTokenEncrypted) return 0
-  if (!GOOGLE_ADS_DEVELOPER_TOKEN) {
-    throw new Error('Google Ads developer token not configured')
-  }
+
+  // Extract spreadsheet ID from platformAccountId
+  // Format: "sheets:SPREADSHEET_ID" or just the spreadsheet ID
+  const spreadsheetId = adAccount.platformAccountId.startsWith('sheets:')
+    ? adAccount.platformAccountId.substring(7)
+    : adAccount.platformAccountId
 
   let accessToken = decrypt(adAccount.accessTokenEncrypted)
 
@@ -212,14 +220,14 @@ async function syncGoogleAds(
   if (account?.tokenExpiresAt && account.tokenExpiresAt < new Date()) {
     // Token expired, refresh it
     if (!adAccount.refreshTokenEncrypted) {
-      throw new Error('Token expired and no refresh token available')
+      throw new Error('Token har gått ut och det finns ingen refresh token')
     }
 
     const refreshToken = decrypt(adAccount.refreshTokenEncrypted)
-    const newTokens = await refreshGoogleAccessToken(
+    const newTokens = await refreshGoogleSheetsToken(
       refreshToken,
-      GOOGLE_ADS_CLIENT_ID,
-      GOOGLE_ADS_CLIENT_SECRET
+      GOOGLE_CLIENT_ID,
+      GOOGLE_CLIENT_SECRET
     )
 
     accessToken = newTokens.access_token
@@ -237,24 +245,22 @@ async function syncGoogleAds(
     })
   }
 
-  const client = new GoogleAdsClient(accessToken, GOOGLE_ADS_DEVELOPER_TOKEN)
-  const metrics = await client.getMetrics(
-    adAccount.platformAccountId,
-    dateFrom,
-    dateTo,
-    'campaign'
-  )
+  // Use Google Sheets client to read ad data
+  const client = new GoogleSheetsAdsClient({
+    accessToken,
+    spreadsheetId,
+  })
 
+  const data = await client.getAdSpendData(dateFrom, dateTo)
   let count = 0
 
-  for (const metric of metrics) {
-    const roas = metric.cost > 0 ? metric.conversionValue / metric.cost : 0
-    const cpc = metric.clicks > 0 ? metric.cost / metric.clicks : 0
-    const cpm = metric.impressions > 0 ? (metric.cost / metric.impressions) * 1000 : 0
+  for (const row of data) {
+    const roas = row.cost > 0 ? row.conversionValue / row.cost : 0
+    const cpc = row.clicks > 0 ? row.cost / row.clicks : 0
+    const cpm = row.impressions > 0 ? (row.cost / row.impressions) * 1000 : 0
 
-    const date = new Date(metric.date)
-    const campaignId = metric.campaignId || null
-    const adSetId = metric.adGroupId || null
+    const date = new Date(row.date)
+    const campaignId = row.campaignId || null
 
     // Find existing record
     const existing = await prisma.adSpend.findFirst({
@@ -262,7 +268,6 @@ async function syncGoogleAds(
         adAccountId: adAccount.id,
         date,
         campaignId,
-        adSetId,
       },
     })
 
@@ -270,16 +275,15 @@ async function syncGoogleAds(
       await prisma.adSpend.update({
         where: { id: existing.id },
         data: {
-          spend: metric.cost,
-          impressions: metric.impressions,
-          clicks: metric.clicks,
-          conversions: Math.round(metric.conversions),
-          revenue: metric.conversionValue,
+          spend: row.cost,
+          impressions: row.impressions,
+          clicks: row.clicks,
+          conversions: Math.round(row.conversions),
+          revenue: row.conversionValue,
           roas,
           cpc,
           cpm,
-          campaignName: metric.campaignName || null,
-          adSetName: metric.adGroupName || null,
+          campaignName: row.campaignName || null,
         },
       })
     } else {
@@ -287,19 +291,17 @@ async function syncGoogleAds(
         data: {
           adAccountId: adAccount.id,
           date,
-          spend: metric.cost,
-          impressions: metric.impressions,
-          clicks: metric.clicks,
-          conversions: Math.round(metric.conversions),
-          revenue: metric.conversionValue,
+          spend: row.cost,
+          impressions: row.impressions,
+          clicks: row.clicks,
+          conversions: Math.round(row.conversions),
+          revenue: row.conversionValue,
           roas,
           cpc,
           cpm,
-          currency: adAccount.currency,
+          currency: row.currency || adAccount.currency,
           campaignId,
-          campaignName: metric.campaignName || null,
-          adSetId,
-          adSetName: metric.adGroupName || null,
+          campaignName: row.campaignName || null,
         },
       })
     }
