@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Store, Users, CreditCard, Bell, User, Shield } from 'lucide-react'
+import { Store, Users, CreditCard, Bell, User, Shield, Truck } from 'lucide-react'
 
 const settingsLinks = [
   {
@@ -10,6 +10,12 @@ const settingsLinks = [
     description: 'Connect and manage your Shopify stores',
     href: '/settings/stores',
     icon: Store,
+  },
+  {
+    title: 'Shipping Costs',
+    description: 'Configure bundled shipping cost tiers',
+    href: '/settings/shipping',
+    icon: Truck,
   },
   {
     title: 'Team Members',

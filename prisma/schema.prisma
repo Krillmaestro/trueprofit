@@ -184,9 +184,33 @@ model Store {
   orders             Order[]
   paymentFeeConfigs  PaymentFeeConfig[]
   inventorySnapshots InventorySnapshot[]
+  shippingCostTiers  ShippingCostTier[]
 
   @@index([teamId])
   @@map("stores")
+}
+
+// Shipping cost tiers for bundled shipping calculations
+// Example: 1 item = 32kr, 2 items = 42kr, 3+ items = 52kr
+model ShippingCostTier {
+  id                    String   @id @default(cuid())
+  storeId               String   @map("store_id")
+  name                  String   // e.g., "Standard Shipping", "Express"
+  minItems              Int      @default(1) @map("min_items")
+  maxItems              Int?     @map("max_items") // null = unlimited
+  cost                  Decimal  @db.Decimal(14, 2) // Base cost for this tier
+  costPerAdditionalItem Decimal  @default(0) @map("cost_per_additional_item") @db.Decimal(14, 2)
+  maxWeightGrams        Int?     @map("max_weight_grams")
+  shippingZone          String?  @map("shipping_zone") // e.g., "SE", "EU", "WORLD"
+  isActive              Boolean  @default(true) @map("is_active")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@index([storeId])
+  @@index([storeId, minItems])
+  @@map("shipping_cost_tiers")
 }
 
 enum SyncStatus {

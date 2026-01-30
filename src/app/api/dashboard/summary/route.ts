@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { cacheKeys, cacheTTL, getOrCompute } from '@/lib/cache'
+import { calculateShippingCost, ShippingTier } from '@/lib/shipping'
 
 // Default payment fee configuration (used when no gateway-specific config exists)
 const DEFAULT_FEE_RATE = 2.9 // percentage
@@ -57,12 +58,32 @@ export async function GET(request: NextRequest) {
       storeFilter.id = storeId
     }
 
-    // Get stores
+    // Get stores with shipping tiers
     const stores = await prisma.store.findMany({
       where: storeFilter,
+      include: {
+        shippingCostTiers: {
+          where: { isActive: true },
+          orderBy: { minItems: 'asc' },
+        },
+      },
     })
 
     const storeIds = stores.map((s) => s.id)
+
+    // Create a map of store -> shipping tiers for quick lookup
+    const storeShippingTiers = new Map<string, ShippingTier[]>()
+    for (const store of stores) {
+      if (store.shippingCostTiers.length > 0) {
+        storeShippingTiers.set(store.id, store.shippingCostTiers.map(t => ({
+          minItems: t.minItems,
+          maxItems: t.maxItems,
+          cost: Number(t.cost),
+          costPerAdditionalItem: Number(t.costPerAdditionalItem),
+          shippingZone: t.shippingZone,
+        })))
+      }
+    }
 
   // Get payment fee configurations for the team
   const paymentFeeConfigs = await prisma.paymentFeeConfig.findMany({
@@ -114,6 +135,7 @@ export async function GET(request: NextRequest) {
   let grossRevenue = 0  // totalPrice - matches Shopify
   let totalCOGS = 0
   let totalShipping = 0
+  let totalShippingCost = 0  // Our calculated shipping cost based on tiers
   let totalFees = 0
   let totalTax = 0
   let totalDiscounts = 0
@@ -125,6 +147,13 @@ export async function GET(request: NextRequest) {
     totalShipping += Number(order.totalShippingPrice)
     totalTax += Number(order.totalTax)
     totalDiscounts += Number(order.totalDiscounts)
+
+    // Calculate our shipping cost based on tiers
+    const storeTiers = storeShippingTiers.get(order.storeId)
+    if (storeTiers && storeTiers.length > 0) {
+      const orderItemCount = order.lineItems.reduce((sum, item) => sum + item.quantity, 0)
+      totalShippingCost += calculateShippingCost(orderItemCount, storeTiers)
+    }
 
     // Calculate refunds from actual refund records
     const orderRefunds = order.refunds?.reduce((sum, r) => sum + Number(r.amount), 0) || 0
@@ -262,8 +291,9 @@ export async function GET(request: NextRequest) {
   const totalAdSpend = Number(adSpend._sum.spend || 0)
   const adRevenue = Number(adSpend._sum.revenue || 0)
 
-  // Note: Shipping is NOT included in costs - it's part of revenue (user handles shipping cost via COGS)
-  const totalCosts = totalCOGS + totalFees + fixedCosts + variableCosts + salaries + oneTimeCosts + totalAdSpend
+  // Include shipping cost if configured with tiers, otherwise not included
+  // User can configure shipping cost tiers in Settings > Shipping Costs
+  const totalCosts = totalCOGS + totalFees + fixedCosts + variableCosts + salaries + oneTimeCosts + totalAdSpend + totalShippingCost
   const netProfit = netRevenue - totalCosts
 
   // Margins calculated on revenue excluding VAT (netRevenue)
@@ -325,9 +355,10 @@ export async function GET(request: NextRequest) {
   const dailyData = Array.from(dailyDataMap.values()).sort((a, b) => a.date.localeCompare(b.date))
 
   // Cost breakdown for pie chart
-  // Note: Shipping is NOT included - it's part of revenue, not a cost
+  // Shipping cost included if tiers are configured
   const costBreakdown = [
     { name: 'COGS', value: totalCOGS, color: '#3b82f6' },
+    { name: 'Shipping', value: totalShippingCost, color: '#ec4899' },
     { name: 'Payment Fees', value: totalFees, color: '#f59e0b' },
     { name: 'Ad Spend', value: totalAdSpend, color: '#8b5cf6' },
     { name: 'Fixed Costs', value: fixedCosts, color: '#22c55e' },
@@ -366,7 +397,8 @@ export async function GET(request: NextRequest) {
         revenue: revenueBreakdown,
         costs: {
           cogs: totalCOGS,
-          shipping: totalShipping,
+          shippingRevenue: totalShipping,  // What customer paid for shipping
+          shippingCost: totalShippingCost,  // Our actual shipping cost
           fees: totalFees,
           adSpend: totalAdSpend,
           fixed: fixedCosts,
