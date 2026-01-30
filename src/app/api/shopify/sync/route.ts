@@ -233,6 +233,36 @@ async function syncProducts(storeId: string, client: ShopifyClient): Promise<num
     const response = await client.getProducts({ limit: 250, page_info: pageInfo })
     const { products } = response.data
 
+    // Collect all inventory_item_ids to fetch COGS in batch
+    const inventoryItemIds: string[] = []
+    for (const productData of products) {
+      for (const variant of productData.variants || []) {
+        if (variant.inventory_item_id) {
+          inventoryItemIds.push(variant.inventory_item_id.toString())
+        }
+      }
+    }
+
+    // Fetch COGS from Shopify inventory items (max 100 per request)
+    const costLookup = new Map<string, number>()
+    if (inventoryItemIds.length > 0) {
+      try {
+        // Process in batches of 100
+        for (let i = 0; i < inventoryItemIds.length; i += 100) {
+          const batch = inventoryItemIds.slice(i, i + 100)
+          await delay(SHOPIFY_API_DELAY_MS) // Rate limiting
+          const { inventory_items } = await client.getInventoryItems(batch)
+          for (const item of inventory_items) {
+            if (item.cost) {
+              costLookup.set(item.id.toString(), parseFloat(item.cost))
+            }
+          }
+        }
+      } catch (error) {
+        console.warn('Failed to fetch inventory item costs:', error)
+      }
+    }
+
     for (const productData of products) {
       const product = await prisma.product.upsert({
         where: {
@@ -263,7 +293,7 @@ async function syncProducts(storeId: string, client: ShopifyClient): Promise<num
 
       // Sync variants
       for (const variant of productData.variants || []) {
-        await prisma.productVariant.upsert({
+        const savedVariant = await prisma.productVariant.upsert({
           where: {
             productId_shopifyVariantId: {
               productId: product.id,
@@ -273,6 +303,7 @@ async function syncProducts(storeId: string, client: ShopifyClient): Promise<num
           create: {
             productId: product.id,
             shopifyVariantId: BigInt(variant.id),
+            inventoryItemId: variant.inventory_item_id ? BigInt(variant.inventory_item_id) : null,
             title: variant.title,
             sku: variant.sku,
             barcode: variant.barcode,
@@ -286,11 +317,48 @@ async function syncProducts(storeId: string, client: ShopifyClient): Promise<num
             title: variant.title,
             sku: variant.sku,
             barcode: variant.barcode,
+            inventoryItemId: variant.inventory_item_id ? BigInt(variant.inventory_item_id) : null,
             price: parseFloat(variant.price || '0'),
             compareAtPrice: variant.compare_at_price ? parseFloat(variant.compare_at_price) : null,
             inventoryQuantity: variant.inventory_quantity || 0,
           },
         })
+
+        // Sync COGS from Shopify if available
+        const shopifyCost = costLookup.get(variant.inventory_item_id?.toString() || '')
+        if (shopifyCost && shopifyCost > 0) {
+          // Check if we already have a SHOPIFY_COST entry for this variant
+          const existingCogs = await prisma.variantCOGS.findFirst({
+            where: {
+              variantId: savedVariant.id,
+              source: 'SHOPIFY_COST',
+              effectiveTo: null, // Current active entry
+            },
+          })
+
+          if (!existingCogs || Number(existingCogs.costPrice) !== shopifyCost) {
+            // Close the old entry if it exists and cost changed
+            if (existingCogs && Number(existingCogs.costPrice) !== shopifyCost) {
+              await prisma.variantCOGS.update({
+                where: { id: existingCogs.id },
+                data: { effectiveTo: new Date() },
+              })
+            }
+
+            // Create new COGS entry if it doesn't exist or cost changed
+            if (!existingCogs || Number(existingCogs.costPrice) !== shopifyCost) {
+              await prisma.variantCOGS.create({
+                data: {
+                  variantId: savedVariant.id,
+                  costPrice: shopifyCost,
+                  source: 'SHOPIFY_COST',
+                  effectiveFrom: new Date(),
+                  notes: 'Imported from Shopify inventory item cost',
+                },
+              })
+            }
+          }
+        }
       }
 
       count++
@@ -357,7 +425,7 @@ async function syncOrders(storeId: string, client: ShopifyClient, sinceDate: Dat
           subtotalPrice: parseFloat(orderData.subtotal_price || '0'),
           totalTax: parseFloat(orderData.total_tax || '0'),
           totalDiscounts: parseFloat(orderData.total_discounts || '0'),
-          totalShippingPrice: parseFloat(orderData.total_shipping_price_set?.shop_money?.amount || '0'),
+          totalShippingPrice: 0, // Shipping handled via COGS, not synced from Shopify
           financialStatus: orderData.financial_status,
           fulfillmentStatus: orderData.fulfillment_status,
           processedAt: orderData.processed_at ? new Date(orderData.processed_at) : null,
@@ -377,7 +445,7 @@ async function syncOrders(storeId: string, client: ShopifyClient, sinceDate: Dat
           subtotalPrice: parseFloat(orderData.subtotal_price || '0'),
           totalTax: parseFloat(orderData.total_tax || '0'),
           totalDiscounts: parseFloat(orderData.total_discounts || '0'),
-          totalShippingPrice: parseFloat(orderData.total_shipping_price_set?.shop_money?.amount || '0'),
+          // totalShippingPrice not updated - handled via COGS
           financialStatus: orderData.financial_status,
           fulfillmentStatus: orderData.fulfillment_status,
           cancelledAt: orderData.cancelled_at ? new Date(orderData.cancelled_at) : null,

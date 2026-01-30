@@ -167,6 +167,22 @@ export class ShopifyClient {
     )
   }
 
+  // Get inventory items (contains cost/COGS data)
+  async getInventoryItems(ids: string[]): Promise<{ inventory_items: ShopifyInventoryItem[] }> {
+    // Shopify allows max 100 IDs per request
+    const idsParam = ids.slice(0, 100).join(',')
+    return this.request<{ inventory_items: ShopifyInventoryItem[] }>(
+      `/inventory_items.json?ids=${idsParam}`
+    )
+  }
+
+  // Get single inventory item
+  async getInventoryItem(id: string): Promise<{ inventory_item: ShopifyInventoryItem }> {
+    return this.request<{ inventory_item: ShopifyInventoryItem }>(
+      `/inventory_items/${id}.json`
+    )
+  }
+
   // Webhooks
   async createWebhook(topic: string, address: string) {
     return this.request<{ webhook: ShopifyWebhook }>('/webhooks.json', {
@@ -306,6 +322,15 @@ export interface ShopifyInventoryLevel {
   inventory_item_id: number
   location_id: number
   available: number
+  updated_at: string
+}
+
+export interface ShopifyInventoryItem {
+  id: number
+  sku: string
+  cost: string | null  // This is the COGS from Shopify
+  tracked: boolean
+  created_at: string
   updated_at: string
 }
 
