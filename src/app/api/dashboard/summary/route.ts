@@ -110,7 +110,8 @@ export async function GET(request: NextRequest) {
   })
 
   // Calculate metrics
-  let totalRevenue = 0
+  // Using totalPrice to match Shopify's "Omsättning" (includes tax and shipping)
+  let grossRevenue = 0  // totalPrice - matches Shopify
   let totalCOGS = 0
   let totalShipping = 0
   let totalFees = 0
@@ -120,7 +121,7 @@ export async function GET(request: NextRequest) {
   let unmatchedLineItems = 0
 
   for (const order of orders) {
-    totalRevenue += Number(order.subtotalPrice)
+    grossRevenue += Number(order.totalPrice)  // Use totalPrice to match Shopify
     totalShipping += Number(order.totalShippingPrice)
     totalTax += Number(order.totalTax)
     totalDiscounts += Number(order.totalDiscounts)
@@ -167,7 +168,10 @@ export async function GET(request: NextRequest) {
     totalFees += orderFees
   }
 
-  const netRevenue = totalRevenue - totalDiscounts - totalRefunds
+  // Revenue after deductions (excluding VAT for profit calculation)
+  const revenueAfterRefunds = grossRevenue - totalRefunds
+  const revenueExVat = revenueAfterRefunds - totalTax  // Revenue excluding VAT
+  const netRevenue = revenueExVat - totalDiscounts  // Net revenue for profit calculation
   const grossProfit = netRevenue - totalCOGS - totalShipping
   const operatingProfit = grossProfit - totalFees
 
@@ -260,6 +264,7 @@ export async function GET(request: NextRequest) {
   const totalCosts = totalCOGS + totalShipping + totalFees + fixedCosts + variableCosts + salaries + oneTimeCosts + totalAdSpend
   const netProfit = netRevenue - totalCosts
 
+  // Margins calculated on revenue excluding VAT (netRevenue)
   const profitMargin = netRevenue > 0 ? (netProfit / netRevenue) * 100 : 0
   const grossMargin = netRevenue > 0 ? (grossProfit / netRevenue) * 100 : 0
   const roas = totalAdSpend > 0 ? adRevenue / totalAdSpend : 0
@@ -306,7 +311,7 @@ export async function GET(request: NextRequest) {
       refunds: 0,
       orders: 0,
     }
-    existing.revenue += Number(day._sum.subtotalPrice || 0)
+    existing.revenue += Number(day._sum.subtotalPrice || 0) + Number(day._sum.totalTax || 0) + Number(day._sum.totalShippingPrice || 0)
     existing.shipping += Number(day._sum.totalShippingPrice || 0)
     existing.tax += Number(day._sum.totalTax || 0)
     existing.discounts += Number(day._sum.totalDiscounts || 0)
@@ -330,25 +335,30 @@ export async function GET(request: NextRequest) {
   ].filter((c) => c.value > 0)
 
   // Revenue breakdown for analysis
+  // gross = totalPrice (matches Shopify "Omsättning")
+  // net = after VAT, discounts, refunds (for profit calculation)
   const revenueBreakdown = {
-    gross: totalRevenue,
+    gross: grossRevenue,  // Matches Shopify's "Omsättning"
     discounts: totalDiscounts,
     refunds: totalRefunds,
     shipping: totalShipping,
     tax: totalTax,
-    net: netRevenue,
+    exVat: revenueExVat,  // Revenue excluding VAT
+    net: netRevenue,  // After all deductions
   }
 
     return {
       summary: {
-        revenue: netRevenue,
-        grossRevenue: totalRevenue,
+        revenue: grossRevenue,  // Matches Shopify "Omsättning" (totalPrice)
+        revenueExVat: revenueExVat,  // Revenue excluding VAT
+        netRevenue: netRevenue,  // After VAT, discounts, refunds
+        tax: totalTax,  // VAT amount
         costs: totalCosts,
         profit: netProfit,
         margin: profitMargin,
         grossMargin,
         orders: orders.length,
-        avgOrderValue: orders.length > 0 ? netRevenue / orders.length : 0,
+        avgOrderValue: orders.length > 0 ? grossRevenue / orders.length : 0,
       },
       breakdown: {
         revenue: revenueBreakdown,

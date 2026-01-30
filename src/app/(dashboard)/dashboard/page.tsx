@@ -27,8 +27,10 @@ import {
 
 interface DashboardData {
   summary: {
-    revenue: number
-    grossRevenue: number
+    revenue: number  // Gross revenue (matches Shopify "Omsättning")
+    revenueExVat?: number  // Revenue excluding VAT
+    netRevenue?: number  // After VAT, discounts, refunds
+    tax?: number  // VAT amount
     costs: number
     profit: number
     margin: number
@@ -43,6 +45,7 @@ interface DashboardData {
       refunds: number
       shipping: number
       tax: number
+      exVat?: number  // Revenue excluding VAT
       net: number
     }
     costs: {

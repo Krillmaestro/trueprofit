@@ -129,9 +129,13 @@ export async function GET(request: NextRequest) {
 
   // Calculate profit for each order
   const ordersWithProfit = orders.map((order) => {
-    const revenue = Number(order.subtotalPrice) - Number(order.totalDiscounts)
+    // Revenue matches Shopify (totalPrice includes tax and shipping)
+    const grossRevenue = Number(order.totalPrice)
+    const tax = Number(order.totalTax)
     const refunds = order.refunds?.reduce((sum, r) => sum + Number(r.amount), 0) || Number(order.totalRefundAmount)
-    const netRevenue = revenue - refunds
+    // Net revenue excludes VAT and refunds for profit calculation
+    const revenueExVat = grossRevenue - tax - refunds
+    const netRevenue = revenueExVat - Number(order.totalDiscounts)
 
     // Calculate COGS
     let cogs = 0
@@ -174,7 +178,10 @@ export async function GET(request: NextRequest) {
       customer: [order.customerFirstName, order.customerLastName].filter(Boolean).join(' ') || 'Unknown',
       customerEmail: order.customerEmail,
       items: order.lineItems.length,
-      revenue: netRevenue,
+      revenue: grossRevenue,  // Matches Shopify (totalPrice)
+      tax,  // VAT amount
+      revenueExVat,  // Revenue excluding VAT
+      netRevenue,  // After VAT, discounts, refunds
       cogs,
       shipping,
       fees,
