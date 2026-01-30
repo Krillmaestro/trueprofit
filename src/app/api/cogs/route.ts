@@ -68,7 +68,7 @@ export async function GET(request: NextRequest) {
       variantTitle: v.title,
       sku: v.sku,
       price: Number(v.price), // Convert Decimal to number
-      inventoryQuantity: v.inventoryQuantity,
+      inventoryQuantity: Math.max(0, v.inventoryQuantity), // Never show negative inventory
       imageUrl: v.product.imageUrl,
       store: v.product.store,
       cogs: cogsEntry ? {
