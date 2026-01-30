@@ -117,8 +117,9 @@ export async function GET(request: NextRequest) {
     }
 
     // Calculate token expiry (Facebook long-lived tokens last ~60 days)
-    const tokenExpiresAt = new Date()
-    tokenExpiresAt.setSeconds(tokenExpiresAt.getSeconds() + longLivedToken.expires_in)
+    // Default to 60 days if expires_in is not provided
+    const expiresInSeconds = longLivedToken.expires_in || 60 * 24 * 60 * 60 // 60 days default
+    const tokenExpiresAt = new Date(Date.now() + expiresInSeconds * 1000)
 
     // Save ad accounts
     for (const account of adAccounts) {
