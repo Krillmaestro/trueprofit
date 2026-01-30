@@ -100,14 +100,16 @@ interface DashboardData {
 // Demo data for when no real data is available
 const demoData: DashboardData = {
   summary: {
-    revenue: 458750,
-    grossRevenue: 495000,
+    revenue: 495000,  // Matches Shopify "Omsättning" (totalPrice)
+    revenueExVat: 396000,  // Revenue excluding VAT (25%)
+    netRevenue: 458750,  // After discounts etc
+    tax: 99000,  // VAT amount
     costs: 287420,
     profit: 171330,
     margin: 37.3,
     grossMargin: 45.2,
     orders: 1247,
-    avgOrderValue: 368,
+    avgOrderValue: 396,
   },
   breakdown: {
     revenue: {
@@ -297,8 +299,8 @@ export default function DashboardPage() {
   const profitChartData = displayData.chartData.daily.map(day => ({
     date: new Date(day.date).toLocaleDateString('sv-SE', { month: 'short', day: 'numeric' }),
     revenue: day.revenue,
-    costs: day.revenue * (displayData.breakdown.costs.total / displayData.summary.grossRevenue) || 0,
-    profit: day.revenue - (day.revenue * (displayData.breakdown.costs.total / displayData.summary.grossRevenue) || 0),
+    costs: day.revenue * (displayData.breakdown.costs.total / displayData.summary.revenue) || 0,
+    profit: day.revenue - (day.revenue * (displayData.breakdown.costs.total / displayData.summary.revenue) || 0),
   }))
 
   return (
@@ -491,8 +493,8 @@ export default function DashboardPage() {
         <BenchmarkCard
           industry="fashion"
           margin={displayData.summary.margin}
-          cogsPercent={displayData.summary.grossRevenue > 0 ? (displayData.breakdown.costs.cogs / displayData.summary.grossRevenue) * 100 : 0}
-          shippingPercent={displayData.summary.grossRevenue > 0 ? (displayData.breakdown.costs.shipping / displayData.summary.grossRevenue) * 100 : 0}
+          cogsPercent={displayData.summary.revenue > 0 ? (displayData.breakdown.costs.cogs / displayData.summary.revenue) * 100 : 0}
+          shippingPercent={displayData.summary.revenue > 0 ? (displayData.breakdown.costs.shipping / displayData.summary.revenue) * 100 : 0}
         />
       </div>
 
