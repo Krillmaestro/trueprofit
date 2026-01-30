@@ -152,14 +152,41 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(new URL('/settings/stores?error=connection_failed', APP_URL))
     }
 
-    // Get user's team
-    const teamMember = await prisma.teamMember.findFirst({
+    // Get user's team, or create one if it doesn't exist
+    let teamMember = await prisma.teamMember.findFirst({
       where: { userId: session.user.id },
       include: { team: true },
     })
 
     if (!teamMember) {
-      return NextResponse.redirect(new URL('/settings/stores?error=no_team', APP_URL))
+      // Auto-create a team for the user
+      const user = await prisma.user.findUnique({
+        where: { id: session.user.id },
+      })
+
+      const teamSlug = `team-${session.user.id.slice(0, 8)}-${Date.now()}`
+      const team = await prisma.team.create({
+        data: {
+          name: user?.name ? `${user.name}'s Team` : 'My Team',
+          slug: teamSlug,
+          members: {
+            create: {
+              userId: session.user.id,
+              role: 'OWNER',
+            },
+          },
+        },
+      })
+
+      teamMember = await prisma.teamMember.findFirst({
+        where: { userId: session.user.id, teamId: team.id },
+        include: { team: true },
+      })
+
+      if (!teamMember) {
+        console.error('Failed to create team for user')
+        return NextResponse.redirect(new URL('/settings/stores?error=team_creation_failed', APP_URL))
+      }
     }
 
     // Save or update store with encrypted access token
