@@ -314,6 +314,14 @@ export async function GET(request: NextRequest) {
   const grossMargin = netRevenue > 0 ? (grossProfit / netRevenue) * 100 : 0
   const roas = totalAdSpend > 0 ? adRevenue / totalAdSpend : 0
 
+  // Break-Even ROAS calculation
+  // Variabla kostnader som ratio av revenue
+  const variableCostsForRoas = totalCOGS + totalFees + totalShippingCost
+  const variableCostRatio = netRevenue > 0 ? variableCostsForRoas / netRevenue : 0
+  const contributionMarginRatioForRoas = 1 - variableCostRatio
+  const breakEvenRoas = contributionMarginRatioForRoas > 0 ? 1 / contributionMarginRatioForRoas : 999
+  const isAdsProfitable = roas >= breakEvenRoas
+
   // Build daily chart data with proper date aggregation
   const dailyOrders = await prisma.order.groupBy({
     by: ['processedAt'],
@@ -437,6 +445,8 @@ export async function GET(request: NextRequest) {
         spend: totalAdSpend,
         revenue: adRevenue,
         roas,
+        breakEvenRoas,
+        isAdsProfitable,
         impressions: adSpend._sum.impressions || 0,
         clicks: adSpend._sum.clicks || 0,
         conversions: adSpend._sum.conversions || 0,

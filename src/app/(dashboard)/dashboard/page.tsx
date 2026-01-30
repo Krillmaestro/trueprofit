@@ -13,7 +13,9 @@ import { SyncButton } from '@/components/dashboard/SyncButton'
 import { GlowCard } from '@/components/dashboard/GlowCard'
 import { ComparisonToggle, ComparisonSummary, getPreviousPeriod } from '@/components/dashboard/ComparisonToggle'
 import { BreakEvenCard } from '@/components/dashboard/BreakEvenCard'
+import { BreakEvenRoasCard } from '@/components/dashboard/BreakEvenRoasCard'
 import { BenchmarkCard } from '@/components/dashboard/BenchmarkCard'
+import { HeroStatCard } from '@/components/dashboard/HeroStatCard'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
   DollarSign,
@@ -54,6 +56,7 @@ interface DashboardData {
       vat?: number
       cogs: number
       shipping: number
+      shippingCost?: number
       fees: number
       adSpend: number
       fixed: number
@@ -90,6 +93,8 @@ interface DashboardData {
     spend: number
     revenue: number
     roas: number
+    breakEvenRoas?: number
+    isAdsProfitable?: boolean
     impressions: number
     clicks: number
     conversions: number
@@ -127,6 +132,7 @@ const demoData: DashboardData = {
     costs: {
       cogs: 145000,
       shipping: 42000,
+      shippingCost: 35000,
       fees: 28500,
       adSpend: 52000,
       fixed: 15000,
@@ -169,6 +175,8 @@ const demoData: DashboardData = {
     spend: 52000,
     revenue: 145600,
     roas: 2.8,
+    breakEvenRoas: 2.1,
+    isAdsProfitable: true,
     impressions: 1250000,
     clicks: 45000,
     conversions: 890,
@@ -420,11 +428,36 @@ export default function DashboardPage() {
         />
       )}
 
-      {/* Primary KPIs - Big Numbers */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      {/* HERO SECTION - Net Profit + Break-Even ROAS */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Net Profit Hero */}
+        <HeroStatCard
+          title="Nettovinst"
+          value={displayData.summary.profit}
+          previousValue={comparisonEnabled ? comparisonData.summary.profit * 0.78 : undefined}
+          suffix=" kr"
+          prefix={displayData.summary.profit >= 0 ? '+' : ''}
+          icon={TrendingUp}
+          gradient={displayData.summary.profit >= 0 ? 'emerald' : 'rose'}
+          loading={loading}
+        />
+
+        {/* Break-Even ROAS Hero */}
+        <BreakEvenRoasCard
+          revenue={displayData.summary.revenue}
+          adSpend={displayData.ads.spend}
+          adRevenue={displayData.ads.revenue}
+          cogs={displayData.breakdown.costs.cogs}
+          fees={displayData.breakdown.costs.fees}
+          shippingCost={displayData.breakdown.costs.shippingCost || displayData.breakdown.costs.shipping}
+        />
+      </div>
+
+      {/* Primary KPIs - 3 columns */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Revenue */}
         <StatCard
-          title="Revenue"
+          title="Omsättning"
           value={displayData.summary.revenue}
           suffix=" kr"
           icon={DollarSign}
@@ -434,21 +467,20 @@ export default function DashboardPage() {
           loading={loading}
         />
 
-        {/* Net Profit */}
+        {/* Total Costs */}
         <StatCard
-          title="Net Profit"
-          value={displayData.summary.profit}
+          title="Totala kostnader"
+          value={displayData.breakdown.costs.total}
           suffix=" kr"
-          icon={TrendingUp}
-          iconBgColor="bg-emerald-50"
-          iconColor="text-emerald-600"
-          trend={profitTrend}
+          icon={Wallet}
+          iconBgColor="bg-rose-50"
+          iconColor="text-rose-600"
           loading={loading}
         />
 
         {/* Profit Margin */}
         <StatCard
-          title="Profit Margin"
+          title="Vinstmarginal"
           value={displayData.summary.margin}
           suffix="%"
           icon={Percent}
@@ -514,20 +546,9 @@ export default function DashboardPage() {
       </div>
 
       {/* Charts Row */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-        {/* Revenue Flow Chart */}
+      <div className="grid grid-cols-1 gap-6">
+        {/* Revenue Flow Chart - Full width */}
         <RevenueFlowChart data={profitChartData} loading={loading} />
-
-        {/* Profit Meter */}
-        <GlowCard className="p-6" glowColor="emerald">
-          <h2 className="text-lg font-semibold text-slate-800 mb-2">Vinsthälsa</h2>
-          <p className="text-sm text-slate-500 mb-4">Din nuvarande lönsamhet i en överblick</p>
-          <ProfitMeter
-            revenue={displayData.summary.revenue}
-            costs={displayData.breakdown.costs.total}
-            profit={displayData.summary.profit}
-          />
-        </GlowCard>
       </div>
 
       {/* Bottom Row */}
@@ -549,7 +570,16 @@ export default function DashboardPage() {
         <BreakEvenCard
           revenue={displayData.summary.revenue}
           profit={displayData.summary.profit}
-          costs={displayData.breakdown.costs.total}
+          costs={{
+            cogs: displayData.breakdown.costs.cogs,
+            fees: displayData.breakdown.costs.fees,
+            shippingCost: displayData.breakdown.costs.shippingCost || displayData.breakdown.costs.shipping,
+            adSpend: displayData.breakdown.costs.adSpend,
+            fixed: displayData.breakdown.costs.fixed,
+            salaries: displayData.breakdown.costs.salaries,
+            variable: displayData.breakdown.costs.variable,
+            oneTime: displayData.breakdown.costs.oneTime,
+          }}
           avgOrderValue={displayData.summary.avgOrderValue}
           avgMargin={displayData.summary.margin}
           daysInPeriod={Math.ceil((dateRange.endDate.getTime() - dateRange.startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1}
@@ -563,6 +593,19 @@ export default function DashboardPage() {
           cogsPercent={displayData.summary.revenue > 0 ? (displayData.breakdown.costs.cogs / displayData.summary.revenue) * 100 : 0}
           shippingPercent={displayData.breakdown.revenue?.shipping && displayData.summary.revenue > 0 ? (displayData.breakdown.revenue.shipping / displayData.summary.revenue) * 100 : 0}
         />
+      </div>
+
+      {/* Profit Meter Row */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <GlowCard className="p-6" glowColor="emerald">
+          <h2 className="text-lg font-semibold text-slate-800 mb-2">Vinsthälsa</h2>
+          <p className="text-sm text-slate-500 mb-4">Din nuvarande lönsamhet i en överblick</p>
+          <ProfitMeter
+            revenue={displayData.summary.revenue}
+            costs={displayData.breakdown.costs.total}
+            profit={displayData.summary.profit}
+          />
+        </GlowCard>
       </div>
 
       {/* Quick Actions */}

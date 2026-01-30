@@ -6,10 +6,21 @@ import { GlowCard } from './GlowCard'
 import { Target, TrendingUp, AlertCircle, CheckCircle2, Clock } from 'lucide-react'
 import { Progress } from '@/components/ui/progress'
 
+interface CostBreakdown {
+  cogs: number
+  fees: number
+  shippingCost: number
+  adSpend: number
+  fixed: number
+  salaries: number
+  variable: number
+  oneTime: number
+}
+
 interface BreakEvenCardProps {
   revenue: number
   profit: number
-  costs: number
+  costs: CostBreakdown
   avgOrderValue: number
   avgMargin: number
   daysInPeriod: number
@@ -28,8 +39,20 @@ export function BreakEvenCard({
   className,
 }: BreakEvenCardProps) {
   const analysis = useMemo(() => {
-    // Calculate break-even point
-    const breakEvenRevenue = costs > 0 && avgMargin > 0 ? costs / (avgMargin / 100) : 0
+    // Separera fasta och variabla kostnader för korrekt break-even beräkning
+    // Fasta kostnader: fixed + salaries + oneTime (påverkas ej av försäljningsvolym)
+    // Variabla kostnader: COGS + fees + shipping + adSpend (ökar med försäljning)
+    const fixedCosts = costs.fixed + costs.salaries + costs.oneTime
+    const variableCosts = costs.cogs + costs.fees + costs.shippingCost + costs.adSpend + costs.variable
+    const totalCosts = fixedCosts + variableCosts
+
+    // Contribution margin = Revenue - Variable Costs
+    // Contribution margin ratio = (Revenue - Variable Costs) / Revenue
+    const contributionMarginRatio = revenue > 0 ? (revenue - variableCosts) / revenue : 0
+
+    // Break-even Revenue = Fixed Costs / Contribution Margin Ratio
+    // Detta är den korrekta formeln för break-even
+    const breakEvenRevenue = contributionMarginRatio > 0 ? fixedCosts / contributionMarginRatio : 0
     const breakEvenOrders = avgOrderValue > 0 ? Math.ceil(breakEvenRevenue / avgOrderValue) : 0
 
     // Current progress towards break-even
@@ -68,7 +91,7 @@ export function BreakEvenCard({
       dailyProfit,
       remainingDays,
     }
-  }, [revenue, profit, costs, avgOrderValue, avgMargin, daysInPeriod, daysElapsed])
+  }, [revenue, profit, costs.fixed, costs.salaries, costs.oneTime, costs.cogs, costs.fees, costs.shippingCost, costs.adSpend, costs.variable, avgOrderValue, avgMargin, daysInPeriod, daysElapsed])
 
   const formatCurrency = (value: number) => {
     if (Math.abs(value) >= 1000000) {
