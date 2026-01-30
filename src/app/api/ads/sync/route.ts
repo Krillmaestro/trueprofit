@@ -126,15 +126,25 @@ async function syncFacebookAds(
     const cpm = impressions > 0 ? (spend / impressions) * 1000 : 0
     const revenue = roas * spend
 
-    const date = new Date(insight.date_start)
+    // Parse date as UTC to avoid timezone issues
+    const dateStr = insight.date_start // Format: "YYYY-MM-DD"
+    const [year, month, day] = dateStr.split('-').map(Number)
+    const date = new Date(Date.UTC(year, month - 1, day, 12, 0, 0)) // Use noon UTC
     const campaignId = insight.campaign_id || null
     const adSetId = insight.adset_id || null
 
-    // Find existing record
+    // Use date range for finding existing records
+    const dateStart = new Date(Date.UTC(year, month - 1, day, 0, 0, 0))
+    const dateEnd = new Date(Date.UTC(year, month - 1, day, 23, 59, 59))
+
+    // Find existing record using date range
     const existing = await prisma.adSpend.findFirst({
       where: {
         adAccountId: adAccount.id,
-        date,
+        date: {
+          gte: dateStart,
+          lte: dateEnd,
+        },
         campaignId,
         adSetId,
       },
@@ -254,19 +264,31 @@ async function syncGoogleAds(
   const data = await client.getAdSpendData(dateFrom, dateTo)
   let count = 0
 
+  console.log(`[Google Ads Sync] Got ${data.length} records from Google Sheets`)
+
   for (const row of data) {
     const roas = row.cost > 0 ? row.conversionValue / row.cost : 0
     const cpc = row.clicks > 0 ? row.cost / row.clicks : 0
     const cpm = row.impressions > 0 ? (row.cost / row.impressions) * 1000 : 0
 
-    const date = new Date(row.date)
+    // Parse date as UTC to avoid timezone issues
+    // row.date is in format "YYYY-MM-DD"
+    const [year, month, day] = row.date.split('-').map(Number)
+    const date = new Date(Date.UTC(year, month - 1, day, 12, 0, 0)) // Use noon UTC to avoid boundary issues
     const campaignId = row.campaignId || null
 
-    // Find existing record
+    // Use date range for finding existing records to handle timezone edge cases
+    const dateStart = new Date(Date.UTC(year, month - 1, day, 0, 0, 0))
+    const dateEnd = new Date(Date.UTC(year, month - 1, day, 23, 59, 59))
+
+    // Find existing record using date range
     const existing = await prisma.adSpend.findFirst({
       where: {
         adAccountId: adAccount.id,
-        date,
+        date: {
+          gte: dateStart,
+          lte: dateEnd,
+        },
         campaignId,
       },
     })
@@ -286,6 +308,7 @@ async function syncGoogleAds(
           campaignName: row.campaignName || null,
         },
       })
+      console.log(`[Google Ads Sync] Updated record for ${row.date} - ${row.campaignName}: ${row.cost} kr`)
     } else {
       await prisma.adSpend.create({
         data: {
@@ -304,10 +327,12 @@ async function syncGoogleAds(
           campaignName: row.campaignName || null,
         },
       })
+      console.log(`[Google Ads Sync] Created record for ${row.date} - ${row.campaignName}: ${row.cost} kr`)
     }
 
     count++
   }
 
+  console.log(`[Google Ads Sync] Synced ${count} records total`)
   return count
 }
