@@ -184,9 +184,8 @@ async function syncOrders(storeId: string, client: ShopifyClient): Promise<{ ord
   let refundCount = 0
   let pageInfo: string | undefined
 
-  // Get orders from the last 90 days by default (increased from 60)
-  const sinceDate = new Date()
-  sinceDate.setDate(sinceDate.getDate() - 90)
+  // Get all orders from January 1st, 2026 onwards
+  const sinceDate = new Date('2026-01-01T00:00:00Z')
 
   // Pre-fetch all variants for this store to avoid N+1 queries
   // This is more efficient than querying for each line item individually
