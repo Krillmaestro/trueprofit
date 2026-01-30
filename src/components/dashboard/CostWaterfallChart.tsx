@@ -1,6 +1,5 @@
 'use client'
 
-import { cn } from '@/lib/utils'
 import { GlowCard } from './GlowCard'
 
 interface CostItem {
@@ -60,7 +59,7 @@ export function CostWaterfallChart({ data, total, loading }: CostWaterfallChartP
       </div>
 
       <div className="space-y-3">
-        {data.map((item, index) => {
+        {data.map((item) => {
           const percentage = total > 0 ? (item.value / total) * 100 : 0
           const barWidth = maxValue > 0 ? (item.value / maxValue) * 100 : 0
 

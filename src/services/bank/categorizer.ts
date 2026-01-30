@@ -98,11 +98,9 @@ export function categorizeTransaction(
   description: string,
   amount: number
 ): CategorizedTransaction {
-  const descLower = description.toLowerCase()
-
-  // Check subscription keywords
-  const isSubscription = SUBSCRIPTION_KEYWORDS.some((kw) => descLower.includes(kw))
-  const isUnnecessary = UNNECESSARY_KEYWORDS.some((kw) => descLower.includes(kw))
+  // Check subscription keywords using lowercase version of description
+  const isSubscription = SUBSCRIPTION_KEYWORDS.some((kw) => description.toLowerCase().includes(kw))
+  const isUnnecessary = UNNECESSARY_KEYWORDS.some((kw) => description.toLowerCase().includes(kw))
 
   // Try to match against known merchant patterns
   for (const rule of MERCHANT_PATTERNS) {
@@ -199,7 +197,6 @@ export function normalizeMerchantName(description: string): string {
  */
 export function suggestCategories(description: string): string[] {
   const suggestions: string[] = []
-  const descLower = description.toLowerCase()
 
   for (const rule of MERCHANT_PATTERNS) {
     const pattern = typeof rule.pattern === 'string'

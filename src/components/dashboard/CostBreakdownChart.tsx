@@ -6,7 +6,6 @@ import {
   Cell,
   ResponsiveContainer,
   Tooltip,
-  Legend,
 } from 'recharts'
 
 interface CostItem {
@@ -31,6 +30,36 @@ const COLORS = [
   '#84cc16', // lime
 ]
 
+const formatCurrency = (value: number) => {
+  return new Intl.NumberFormat('sv-SE', {
+    style: 'currency',
+    currency: 'SEK',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(value)
+}
+
+interface CustomTooltipProps {
+  active?: boolean
+  payload?: Array<{ name: string; value: number; payload: CostItem }>
+  total: number
+}
+
+function CustomTooltip({ active, payload, total }: CustomTooltipProps) {
+  if (active && payload && payload.length) {
+    const item = payload[0]
+    const percentage = ((item.value / total) * 100).toFixed(1)
+    return (
+      <div className="bg-white p-3 rounded-lg shadow-lg border border-slate-200">
+        <p className="font-semibold text-slate-800">{item.name}</p>
+        <p className="text-slate-600">{formatCurrency(item.value)}</p>
+        <p className="text-slate-500 text-sm">{percentage}% of total</p>
+      </div>
+    )
+  }
+  return null
+}
+
 export function CostBreakdownChart({ data, loading }: CostBreakdownChartProps) {
   if (loading) {
     return (
@@ -49,30 +78,6 @@ export function CostBreakdownChart({ data, loading }: CostBreakdownChartProps) {
   }))
 
   const total = data.reduce((sum, item) => sum + item.value, 0)
-
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('sv-SE', {
-      style: 'currency',
-      currency: 'SEK',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(value)
-  }
-
-  const CustomTooltip = ({ active, payload }: { active?: boolean; payload?: Array<{ name: string; value: number; payload: CostItem }> }) => {
-    if (active && payload && payload.length) {
-      const item = payload[0]
-      const percentage = ((item.value / total) * 100).toFixed(1)
-      return (
-        <div className="bg-white p-3 rounded-lg shadow-lg border border-slate-200">
-          <p className="font-semibold text-slate-800">{item.name}</p>
-          <p className="text-slate-600">{formatCurrency(item.value)}</p>
-          <p className="text-slate-500 text-sm">{percentage}% of total</p>
-        </div>
-      )
-    }
-    return null
-  }
 
   return (
     <div className="bg-white rounded-xl shadow-sm p-6">
@@ -98,7 +103,7 @@ export function CostBreakdownChart({ data, loading }: CostBreakdownChartProps) {
               <Cell key={`cell-${index}`} fill={entry.color} />
             ))}
           </Pie>
-          <Tooltip content={<CustomTooltip />} />
+          <Tooltip content={<CustomTooltip total={total} />} />
         </PieChart>
       </ResponsiveContainer>
       <div className="mt-4 grid grid-cols-2 gap-2">

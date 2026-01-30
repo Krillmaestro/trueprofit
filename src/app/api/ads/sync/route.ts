@@ -2,40 +2,35 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { encrypt, decrypt } from '@/lib/encryption'
+import { syncRateLimiter, getRateLimitKey, getRateLimitHeaders } from '@/lib/rate-limit'
 import { FacebookAdsClient, extractConversions, extractRoas } from '@/services/ads/facebook'
 import { GoogleAdsClient, refreshGoogleAccessToken } from '@/services/ads/google'
-import crypto from 'crypto'
 
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || crypto.randomBytes(32).toString('hex')
 // Use Google Ads specific credentials if available, otherwise fall back to regular Google OAuth
 const GOOGLE_ADS_CLIENT_ID = process.env.GOOGLE_ADS_CLIENT_ID || process.env.GOOGLE_CLIENT_ID || ''
 const GOOGLE_ADS_CLIENT_SECRET = process.env.GOOGLE_ADS_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET || ''
 const GOOGLE_ADS_DEVELOPER_TOKEN = process.env.GOOGLE_ADS_DEVELOPER_TOKEN || ''
-
-function decrypt(encryptedText: string): string {
-  const [ivHex, encrypted] = encryptedText.split(':')
-  const iv = Buffer.from(ivHex, 'hex')
-  const key = Buffer.from(ENCRYPTION_KEY.slice(0, 64), 'hex')
-  const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv)
-  let decrypted = decipher.update(encrypted, 'hex', 'utf8')
-  decrypted += decipher.final('utf8')
-  return decrypted
-}
-
-function encrypt(text: string): string {
-  const iv = crypto.randomBytes(16)
-  const key = Buffer.from(ENCRYPTION_KEY.slice(0, 64), 'hex')
-  const cipher = crypto.createCipheriv('aes-256-cbc', key, iv)
-  let encrypted = cipher.update(text, 'utf8', 'hex')
-  encrypted += cipher.final('hex')
-  return iv.toString('hex') + ':' + encrypted
-}
 
 export async function POST(request: NextRequest) {
   const session = await getServerSession(authOptions)
 
   if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  // Apply rate limiting based on user ID
+  const rateLimitKey = getRateLimitKey(request, session.user.id)
+  const rateLimitResult = syncRateLimiter(rateLimitKey)
+
+  if (rateLimitResult.limited) {
+    return NextResponse.json(
+      { error: 'Too many sync requests. Please wait before syncing again.' },
+      {
+        status: 429,
+        headers: getRateLimitHeaders(10, rateLimitResult.remaining, rateLimitResult.resetAt),
+      }
+    )
   }
 
   const { adAccountId, dateFrom, dateTo } = await request.json()

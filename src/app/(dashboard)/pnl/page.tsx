@@ -11,7 +11,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Download, FileText, TrendingUp, TrendingDown, DollarSign, AlertCircle, Loader2 } from 'lucide-react'
+import { FileText, TrendingUp, TrendingDown, DollarSign, AlertCircle, Loader2 } from 'lucide-react'
 
 interface PnLData {
   period: string
@@ -120,42 +120,42 @@ export default function PnLPage() {
   const [periodType, setPeriodType] = useState('month')
   const [pnlData, setPnlData] = useState<PnLData | null>(null)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [, setError] = useState<string | null>(null)
   const [isDemo, setIsDemo] = useState(false)
 
   useEffect(() => {
-    fetchPnLData()
-  }, [periodType])
+    const fetchData = async () => {
+      setLoading(true)
+      setError(null)
 
-  const fetchPnLData = async () => {
-    setLoading(true)
-    setError(null)
+      try {
+        const response = await fetch(`/api/pnl?periodType=${periodType}`)
+        if (!response.ok) {
+          throw new Error('Failed to fetch P&L data')
+        }
 
-    try {
-      const response = await fetch(`/api/pnl?periodType=${periodType}`)
-      if (!response.ok) {
-        throw new Error('Failed to fetch P&L data')
-      }
+        const data = await response.json()
 
-      const data = await response.json()
-
-      // Check if there's real data
-      if (data.orderCount === 0) {
+        // Check if there's real data
+        if (data.orderCount === 0) {
+          setIsDemo(true)
+          setPnlData(demoPnL)
+        } else {
+          setIsDemo(false)
+          setPnlData(data)
+        }
+      } catch (err) {
+        console.error('Error fetching P&L data:', err)
+        setError('Failed to load P&L data')
         setIsDemo(true)
         setPnlData(demoPnL)
-      } else {
-        setIsDemo(false)
-        setPnlData(data)
+      } finally {
+        setLoading(false)
       }
-    } catch (err) {
-      console.error('Error fetching P&L data:', err)
-      setError('Failed to load P&L data')
-      setIsDemo(true)
-      setPnlData(demoPnL)
-    } finally {
-      setLoading(false)
     }
-  }
+
+    fetchData()
+  }, [periodType])
 
   const formatCurrency = (value: number) => {
     const absValue = Math.abs(value)

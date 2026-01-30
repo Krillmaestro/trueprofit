@@ -62,7 +62,7 @@ function LoginForm() {
 
       <CardContent className="space-y-4">
         {errorMessage && (
-          <div className="bg-red-50 text-red-600 text-sm p-3 rounded-lg">
+          <div className="bg-red-50 text-red-600 text-sm p-3 rounded-lg" role="alert" aria-live="polite">
             {errorMessage}
           </div>
         )}
@@ -101,7 +101,7 @@ function LoginForm() {
           </span>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4" aria-label="Login form">
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
             <Input
@@ -111,6 +111,8 @@ function LoginForm() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
+              autoComplete="email"
+              aria-describedby={errorMessage ? 'login-error' : undefined}
             />
           </div>
 
@@ -123,10 +125,12 @@ function LoginForm() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
+              autoComplete="current-password"
+              aria-describedby={errorMessage ? 'login-error' : undefined}
             />
           </div>
 
-          <Button type="submit" className="w-full" disabled={loading}>
+          <Button type="submit" className="w-full" disabled={loading} aria-busy={loading}>
             {loading ? 'Signing in...' : 'Sign in'}
           </Button>
         </form>

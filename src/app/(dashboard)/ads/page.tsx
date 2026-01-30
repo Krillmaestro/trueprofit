@@ -198,7 +198,7 @@ function AdsPageContent() {
         const error = await response.json()
         setNotification({ type: 'error', message: error.details || 'Sync failed' })
       }
-    } catch (error) {
+    } catch {
       setNotification({ type: 'error', message: 'Failed to sync. Please try again.' })
     } finally {
       setSyncing(null)

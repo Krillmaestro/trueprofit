@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { CostType, Prisma } from '@prisma/client'
 
 // GET /api/expenses - Get all custom costs/expenses
 export async function GET(request: NextRequest) {
@@ -24,12 +25,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'No team found' }, { status: 404 })
   }
 
-  const whereClause: any = {
+  const whereClause: Prisma.CustomCostWhereInput = {
     teamId: teamMember.teamId,
   }
 
-  if (type) {
-    whereClause.costType = type
+  if (type && Object.values(CostType).includes(type as CostType)) {
+    whereClause.costType = type as CostType
   }
 
   const expenses = await prisma.customCost.findMany({
@@ -90,7 +91,6 @@ export async function POST(request: NextRequest) {
     amount,
     isRecurring,
     recurrenceType,
-    recurrenceDay,
     startDate,
     endDate,
     notes,

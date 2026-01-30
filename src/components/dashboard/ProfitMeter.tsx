@@ -11,7 +11,7 @@ interface ProfitMeterProps {
 
 export function ProfitMeter({ revenue, costs, profit, className }: ProfitMeterProps) {
   const profitMargin = revenue > 0 ? (profit / revenue) * 100 : 0
-  const costRatio = revenue > 0 ? (costs / revenue) * 100 : 0
+  void costs // Reserved for future cost visualization enhancements
 
   // Calculate needle rotation (-90 = far left/loss, 0 = center, 90 = far right/profit)
   // Map profit margin from -50% to +50% onto -90 to +90 degrees

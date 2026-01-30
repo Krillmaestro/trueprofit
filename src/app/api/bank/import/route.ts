@@ -4,6 +4,11 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { parseSwedishBankCSV } from '@/services/bank/parser'
 import { categorizeTransaction } from '@/services/bank/categorizer'
+import { importRateLimiter, getRateLimitKey, getRateLimitHeaders } from '@/lib/rate-limit'
+
+// File size limits (in bytes)
+const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10 MB
+const MAX_ROWS = 50000 // Maximum number of rows to process
 
 // POST /api/bank/import - Import bank transactions from CSV
 export async function POST(request: NextRequest) {
@@ -13,12 +18,51 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
+  // Apply rate limiting
+  const rateLimitKey = getRateLimitKey(request, session.user.id)
+  const rateLimitResult = importRateLimiter(rateLimitKey)
+
+  if (rateLimitResult.limited) {
+    return NextResponse.json(
+      { error: 'Too many import requests. Please wait before importing again.' },
+      {
+        status: 429,
+        headers: getRateLimitHeaders(5, rateLimitResult.remaining, rateLimitResult.resetAt),
+      }
+    )
+  }
+
   const formData = await request.formData()
   const file = formData.get('file') as File
   const accountId = formData.get('accountId') as string
 
   if (!file) {
     return NextResponse.json({ error: 'File is required' }, { status: 400 })
+  }
+
+  // Validate file type
+  const fileName = file.name.toLowerCase()
+  if (!fileName.endsWith('.csv') && !fileName.endsWith('.txt')) {
+    return NextResponse.json(
+      { error: 'Invalid file type. Only CSV and TXT files are allowed.' },
+      { status: 400 }
+    )
+  }
+
+  // Validate file size
+  if (file.size > MAX_FILE_SIZE) {
+    return NextResponse.json(
+      { error: `File too large. Maximum size is ${MAX_FILE_SIZE / 1024 / 1024} MB.` },
+      { status: 400 }
+    )
+  }
+
+  // Validate file is not empty
+  if (file.size === 0) {
+    return NextResponse.json(
+      { error: 'File is empty.' },
+      { status: 400 }
+    )
   }
 
   // Get or create account
@@ -66,6 +110,14 @@ export async function POST(request: NextRequest) {
   if (parseResult.errors.length > 0 && parseResult.transactions.length === 0) {
     return NextResponse.json(
       { error: 'Failed to parse CSV', details: parseResult.errors },
+      { status: 400 }
+    )
+  }
+
+  // Validate row count
+  if (parseResult.transactions.length > MAX_ROWS) {
+    return NextResponse.json(
+      { error: `Too many rows. Maximum is ${MAX_ROWS.toLocaleString()} transactions per import.` },
       { status: 400 }
     )
   }

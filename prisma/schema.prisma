@@ -163,12 +163,12 @@ enum InvitationStatus {
 // ===========================================
 
 model Store {
-  id                 String      @id @default(cuid())
-  teamId             String      @map("team_id")
-  name               String
-  shopifyDomain      String      @unique @map("shopify_domain")
-  shopifyAccessToken String?     @map("shopify_access_token")
-  shopifyScopes      String[]    @map("shopify_scopes")
+  id                          String      @id @default(cuid())
+  teamId                      String      @map("team_id")
+  name                        String
+  shopifyDomain               String      @unique @map("shopify_domain")
+  shopifyAccessTokenEncrypted String?     @map("shopify_access_token_encrypted")
+  shopifyScopes               String[]    @map("shopify_scopes")
   currency           String      @default("SEK")
   timezone           String      @default("Europe/Stockholm")
   isActive           Boolean     @default(true) @map("is_active")
@@ -356,6 +356,7 @@ model Order {
   @@index([storeId])
   @@index([shopifyCreatedAt])
   @@index([storeId, shopifyCreatedAt])
+  @@index([storeId, processedAt])
   @@map("orders")
 }
 

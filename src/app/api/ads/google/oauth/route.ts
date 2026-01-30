@@ -2,26 +2,16 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { encrypt } from '@/lib/encryption'
+import { oauthRateLimiter, getRateLimitKey } from '@/lib/rate-limit'
+import { generateStateToken, validateStateToken } from '@/lib/oauth-state'
 import { GoogleAdsClient, exchangeGoogleAuthCode } from '@/services/ads/google'
-import crypto from 'crypto'
 
 // Use Google Ads specific credentials if available, otherwise fall back to regular Google OAuth
 const GOOGLE_ADS_CLIENT_ID = process.env.GOOGLE_ADS_CLIENT_ID || process.env.GOOGLE_CLIENT_ID || ''
 const GOOGLE_ADS_CLIENT_SECRET = process.env.GOOGLE_ADS_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET || ''
 const GOOGLE_ADS_DEVELOPER_TOKEN = process.env.GOOGLE_ADS_DEVELOPER_TOKEN || ''
 const APP_URL = process.env.NEXTAUTH_URL || 'http://localhost:3000'
-
-// Encryption for storing tokens
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || crypto.randomBytes(32).toString('hex')
-
-function encrypt(text: string): string {
-  const iv = crypto.randomBytes(16)
-  const key = Buffer.from(ENCRYPTION_KEY.slice(0, 64), 'hex')
-  const cipher = crypto.createCipheriv('aes-256-cbc', key, iv)
-  let encrypted = cipher.update(text, 'utf8', 'hex')
-  encrypted += cipher.final('hex')
-  return iv.toString('hex') + ':' + encrypted
-}
 
 export async function GET(request: NextRequest) {
   const session = await getServerSession(authOptions)
@@ -30,8 +20,17 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(new URL('/login', APP_URL))
   }
 
+  // Apply rate limiting
+  const rateLimitKey = getRateLimitKey(request, session.user.id)
+  const rateLimitResult = oauthRateLimiter(rateLimitKey)
+
+  if (rateLimitResult.limited) {
+    return NextResponse.redirect(new URL('/ads?error=rate_limited', APP_URL))
+  }
+
   const searchParams = request.nextUrl.searchParams
   const code = searchParams.get('code')
+  const state = searchParams.get('state')
   const error = searchParams.get('error')
 
   // Handle OAuth errors
@@ -58,7 +57,8 @@ export async function GET(request: NextRequest) {
       'https://www.googleapis.com/auth/adwords',
     ].join(' ')
 
-    const stateToken = crypto.randomBytes(16).toString('hex')
+    // Generate and store a secure state token for CSRF protection
+    const stateToken = generateStateToken(session.user.id, { provider: 'google' })
 
     const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth')
     authUrl.searchParams.set('client_id', GOOGLE_ADS_CLIENT_ID)
@@ -73,6 +73,18 @@ export async function GET(request: NextRequest) {
   }
 
   // Step 2: Exchange code for access token
+  // Validate state token to prevent CSRF attacks
+  if (!state) {
+    console.error('Missing state token in Google OAuth callback')
+    return NextResponse.redirect(new URL('/ads?error=invalid_state', APP_URL))
+  }
+
+  const stateValidation = validateStateToken(state, session.user.id)
+  if (!stateValidation.valid) {
+    console.error('Invalid state token:', stateValidation.error)
+    return NextResponse.redirect(new URL('/ads?error=invalid_state', APP_URL))
+  }
+
   try {
     const redirectUri = `${APP_URL}/api/ads/google/oauth`
 

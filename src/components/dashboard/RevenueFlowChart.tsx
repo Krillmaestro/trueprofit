@@ -8,7 +8,6 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  Legend,
 } from 'recharts'
 import { GlowCard } from './GlowCard'
 
@@ -24,43 +23,55 @@ interface RevenueFlowChartProps {
   loading?: boolean
 }
 
-export function RevenueFlowChart({ data, loading }: RevenueFlowChartProps) {
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('sv-SE', {
-      style: 'currency',
-      currency: 'SEK',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(value)
-  }
+const formatCurrency = (value: number) => {
+  return new Intl.NumberFormat('sv-SE', {
+    style: 'currency',
+    currency: 'SEK',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(value)
+}
 
-  const CustomTooltip = ({ active, payload, label }: any) => {
-    if (active && payload && payload.length) {
-      return (
-        <div className="bg-white/95 backdrop-blur-sm p-4 rounded-xl shadow-lg border border-slate-200/60">
-          <p className="text-sm font-semibold text-slate-800 mb-2">{label}</p>
-          <div className="space-y-1.5">
-            {payload.map((entry: any, index: number) => (
-              <div key={index} className="flex items-center justify-between gap-4">
-                <div className="flex items-center gap-2">
-                  <div
-                    className="w-2.5 h-2.5 rounded-full"
-                    style={{ backgroundColor: entry.color }}
-                  />
-                  <span className="text-sm text-slate-600">{entry.name}</span>
-                </div>
-                <span className="text-sm font-medium text-slate-800">
-                  {formatCurrency(entry.value)}
-                </span>
+interface TooltipPayloadEntry {
+  name: string
+  value: number
+  color: string
+}
+
+interface CustomTooltipProps {
+  active?: boolean
+  payload?: TooltipPayloadEntry[]
+  label?: string
+}
+
+function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
+  if (active && payload && payload.length) {
+    return (
+      <div className="bg-white/95 backdrop-blur-sm p-4 rounded-xl shadow-lg border border-slate-200/60">
+        <p className="text-sm font-semibold text-slate-800 mb-2">{label}</p>
+        <div className="space-y-1.5">
+          {payload.map((entry, index) => (
+            <div key={index} className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-2">
+                <div
+                  className="w-2.5 h-2.5 rounded-full"
+                  style={{ backgroundColor: entry.color }}
+                />
+                <span className="text-sm text-slate-600">{entry.name}</span>
               </div>
-            ))}
-          </div>
+              <span className="text-sm font-medium text-slate-800">
+                {formatCurrency(entry.value)}
+              </span>
+            </div>
+          ))}
         </div>
-      )
-    }
-    return null
+      </div>
+    )
   }
+  return null
+}
 
+export function RevenueFlowChart({ data, loading }: RevenueFlowChartProps) {
   if (loading) {
     return (
       <GlowCard className="p-6" hover={false}>

@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { encrypt } from '@/lib/encryption'
+import { oauthRateLimiter, getRateLimitKey } from '@/lib/rate-limit'
+import { generateStateToken, validateStateToken } from '@/lib/oauth-state'
 import crypto from 'crypto'
 
 const SHOPIFY_API_KEY = process.env.SHOPIFY_API_KEY || ''
@@ -24,6 +27,14 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(new URL('/login', APP_URL))
   }
 
+  // Apply rate limiting for OAuth initiations
+  const rateLimitKey = getRateLimitKey(request, session.user.id)
+  const rateLimitResult = oauthRateLimiter(rateLimitKey)
+
+  if (rateLimitResult.limited) {
+    return NextResponse.redirect(new URL('/settings/stores?error=rate_limited', APP_URL))
+  }
+
   const searchParams = request.nextUrl.searchParams
   const shop = searchParams.get('shop')
   const code = searchParams.get('code')
@@ -38,10 +49,8 @@ export async function GET(request: NextRequest) {
 
   // Step 1: Initial OAuth request - redirect to Shopify
   if (shop && !code) {
-    const nonce = crypto.randomBytes(16).toString('hex')
-
-    // Store nonce in session/database for verification
-    // In production, you'd want to store this securely
+    // Generate and store a secure state token for CSRF protection
+    const stateToken = generateStateToken(session.user.id, { shop })
 
     // Normalize shop domain - ensure it ends with .myshopify.com
     const shopDomain = shop.includes('.myshopify.com') ? shop : `${shop}.myshopify.com`
@@ -51,13 +60,25 @@ export async function GET(request: NextRequest) {
       `client_id=${SHOPIFY_API_KEY}&` +
       `scope=${SCOPES}&` +
       `redirect_uri=${encodeURIComponent(redirectUri)}&` +
-      `state=${nonce}`
+      `state=${stateToken}`
 
     return NextResponse.redirect(authUrl)
   }
 
   // Step 2: Callback from Shopify with authorization code
   if (code && shop && hmac) {
+    // Validate state token to prevent CSRF attacks
+    if (!state) {
+      console.error('Missing state token in OAuth callback')
+      return NextResponse.redirect(new URL('/settings/stores?error=invalid_state', APP_URL))
+    }
+
+    const stateValidation = validateStateToken(state, session.user.id)
+    if (!stateValidation.valid) {
+      console.error('Invalid state token:', stateValidation.error)
+      return NextResponse.redirect(new URL('/settings/stores?error=invalid_state', APP_URL))
+    }
+
     // Verify HMAC
     const params = new URLSearchParams(searchParams)
     params.delete('hmac')
@@ -116,7 +137,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(new URL('/settings/stores?error=no_team', APP_URL))
     }
 
-    // Save or update store
+    // Save or update store with encrypted access token
+    const encryptedToken = encrypt(access_token)
+
     await prisma.store.upsert({
       where: {
         shopifyDomain: shop,
@@ -124,7 +147,7 @@ export async function GET(request: NextRequest) {
       create: {
         teamId: teamMember.teamId,
         shopifyDomain: shop,
-        shopifyAccessToken: access_token,
+        shopifyAccessTokenEncrypted: encryptedToken,
         shopifyScopes: scope.split(','),
         name: shopInfo.name,
         currency: shopInfo.currency,
@@ -132,7 +155,7 @@ export async function GET(request: NextRequest) {
         isActive: true,
       },
       update: {
-        shopifyAccessToken: access_token,
+        shopifyAccessTokenEncrypted: encryptedToken,
         shopifyScopes: scope.split(','),
         name: shopInfo.name,
         currency: shopInfo.currency,

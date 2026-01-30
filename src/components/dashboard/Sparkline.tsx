@@ -38,8 +38,8 @@ export function Sparkline({
 
   const areaPath = `${linePath} L ${points[points.length - 1].x} ${height - padding} L ${padding} ${height - padding} Z`
 
-  const trend = data[data.length - 1] - data[0]
-  const gradientId = `sparkline-${Math.random().toString(36).slice(2)}`
+  // Use a deterministic ID based on data hash to avoid hydration issues
+  const gradientId = `sparkline-${data.length}-${Math.round(data[0] || 0)}`
 
   return (
     <svg

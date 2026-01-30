@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useMemo } from 'react'
+import Image from 'next/image'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -13,6 +14,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
+import { Skeleton } from '@/components/ui/skeleton'
 import {
   Select,
   SelectContent,
@@ -20,104 +22,134 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Search, Download, Package, TrendingUp, DollarSign, Percent, ArrowUpDown } from 'lucide-react'
+import { Search, Download, Package, TrendingUp, DollarSign, Percent, ArrowUpDown, ChevronLeft, ChevronRight, AlertCircle } from 'lucide-react'
 
-// Demo data
-const demoProducts = [
-  {
-    id: '1',
-    title: 'Premium Wireless Headphones',
-    sku: 'WH-001',
-    variant: 'Black',
-    price: 1299,
-    cogs: 420,
-    margin: 67.7,
-    sold: 156,
-    revenue: 202644,
-    profit: 137124,
-    status: 'active',
-    image: null,
-  },
-  {
-    id: '2',
-    title: 'Bluetooth Speaker Pro',
-    sku: 'BS-002',
-    variant: 'Silver',
-    price: 899,
-    cogs: 280,
-    margin: 68.9,
-    sold: 98,
-    revenue: 88102,
-    profit: 60662,
-    status: 'active',
-    image: null,
-  },
-  {
-    id: '3',
-    title: 'USB-C Charging Cable 2m',
-    sku: 'CC-003',
-    variant: 'White',
-    price: 149,
-    cogs: 25,
-    margin: 83.2,
-    sold: 432,
-    revenue: 64368,
-    profit: 53568,
-    status: 'active',
-    image: null,
-  },
-  {
-    id: '4',
-    title: 'Laptop Stand Aluminum',
-    sku: 'LS-004',
-    variant: 'Space Gray',
-    price: 599,
-    cogs: 180,
-    margin: 69.9,
-    sold: 78,
-    revenue: 46722,
-    profit: 32682,
-    status: 'active',
-    image: null,
-  },
-  {
-    id: '5',
-    title: 'Wireless Mouse Ergonomic',
-    sku: 'WM-005',
-    variant: 'Black',
-    price: 449,
-    cogs: 140,
-    margin: 68.8,
-    sold: 124,
-    revenue: 55676,
-    profit: 38316,
-    status: 'low_stock',
-    image: null,
-  },
-]
+interface Product {
+  id: string
+  title: string
+  handle: string
+  vendor: string | null
+  productType: string | null
+  status: string
+  imageUrl: string | null
+  variants: number
+  unitsSold: number
+  revenue: number
+  cogs: number
+  profit: number
+  margin: number
+  orders: number
+  avgPrice: number
+  hasCOGS: boolean
+  currency: string
+}
+
+interface ProductsData {
+  products: Product[]
+  totals: {
+    unitsSold: number
+    revenue: number
+    cogs: number
+    profit: number
+    avgMargin: number
+    productCount: number
+  }
+  pagination: {
+    page: number
+    limit: number
+    total: number
+    totalPages: number
+  }
+}
 
 export default function ProductsPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [sortBy, setSortBy] = useState('revenue')
+  const [data, setData] = useState<ProductsData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [page, setPage] = useState(1)
 
-  const filteredProducts = demoProducts
-    .filter(
-      (p) =>
-        p.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        p.sku.toLowerCase().includes(searchTerm.toLowerCase())
-    )
-    .sort((a, b) => {
+  useEffect(() => {
+    const fetchProducts = async () => {
+      setLoading(true)
+      try {
+        const params = new URLSearchParams({
+          page: page.toString(),
+          limit: '50',
+        })
+        if (searchTerm) {
+          params.set('search', searchTerm)
+        }
+
+        const res = await fetch(`/api/products?${params}`)
+        if (res.ok) {
+          const json = await res.json()
+          setData(json)
+        }
+      } catch (error) {
+        console.error('Failed to fetch products:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    const timeout = setTimeout(fetchProducts, searchTerm ? 300 : 0)
+    return () => clearTimeout(timeout)
+  }, [page, searchTerm])
+
+  const formatCurrency = (amount: number, currency = 'SEK') => {
+    return new Intl.NumberFormat('sv-SE', {
+      style: 'currency',
+      currency,
+      maximumFractionDigits: 0,
+    }).format(amount)
+  }
+
+  const sortedProducts = useMemo(() => {
+    if (!data?.products) return []
+    return [...data.products].sort((a, b) => {
       if (sortBy === 'revenue') return b.revenue - a.revenue
       if (sortBy === 'profit') return b.profit - a.profit
       if (sortBy === 'margin') return b.margin - a.margin
-      if (sortBy === 'sold') return b.sold - a.sold
+      if (sortBy === 'sold') return b.unitsSold - a.unitsSold
       return 0
     })
+  }, [data?.products, sortBy])
 
-  const totalRevenue = demoProducts.reduce((sum, p) => sum + p.revenue, 0)
-  const totalProfit = demoProducts.reduce((sum, p) => sum + p.profit, 0)
-  const totalSold = demoProducts.reduce((sum, p) => sum + p.sold, 0)
-  const avgMargin = demoProducts.reduce((sum, p) => sum + p.margin, 0) / demoProducts.length
+  if (loading && !data) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <Skeleton className="h-8 w-32 mb-2" />
+            <Skeleton className="h-4 w-48" />
+          </div>
+          <Skeleton className="h-10 w-24" />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map((i) => (
+            <Card key={i}>
+              <CardContent className="pt-6">
+                <Skeleton className="h-16 w-full" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+        <Card>
+          <CardHeader>
+            <Skeleton className="h-6 w-32" />
+          </CardHeader>
+          <CardContent>
+            <Skeleton className="h-64 w-full" />
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  const products = sortedProducts
+  const totals = data?.totals || { unitsSold: 0, revenue: 0, profit: 0, avgMargin: 0, productCount: 0 }
+  const pagination = data?.pagination || { page: 1, totalPages: 1, total: 0 }
 
   return (
     <div className="space-y-6">
@@ -140,7 +172,7 @@ export default function ProductsPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-slate-600">Total Products</p>
-                <p className="text-2xl font-bold text-slate-800">{demoProducts.length}</p>
+                <p className="text-2xl font-bold text-slate-800">{pagination.total.toLocaleString()}</p>
               </div>
               <Package className="h-8 w-8 text-blue-500 opacity-50" />
             </div>
@@ -153,7 +185,7 @@ export default function ProductsPage() {
               <div>
                 <p className="text-sm text-slate-600">Total Revenue</p>
                 <p className="text-2xl font-bold text-slate-800">
-                  {totalRevenue.toLocaleString('sv-SE')} kr
+                  {formatCurrency(totals.revenue)}
                 </p>
               </div>
               <DollarSign className="h-8 w-8 text-green-500 opacity-50" />
@@ -166,8 +198,8 @@ export default function ProductsPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-slate-600">Total Profit</p>
-                <p className="text-2xl font-bold text-green-600">
-                  {totalProfit.toLocaleString('sv-SE')} kr
+                <p className={`text-2xl font-bold ${totals.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  {formatCurrency(totals.profit)}
                 </p>
               </div>
               <TrendingUp className="h-8 w-8 text-green-500 opacity-50" />
@@ -180,7 +212,7 @@ export default function ProductsPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-slate-600">Avg Margin</p>
-                <p className="text-2xl font-bold text-slate-800">{avgMargin.toFixed(1)}%</p>
+                <p className="text-2xl font-bold text-slate-800">{totals.avgMargin.toFixed(1)}%</p>
               </div>
               <Percent className="h-8 w-8 text-purple-500 opacity-50" />
             </div>
@@ -202,7 +234,10 @@ export default function ProductsPage() {
                 <Input
                   placeholder="Search products..."
                   value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
+                  onChange={(e) => {
+                    setSearchTerm(e.target.value)
+                    setPage(1)
+                  }}
                   className="pl-10"
                 />
               </div>
@@ -222,65 +257,130 @@ export default function ProductsPage() {
           </div>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Product</TableHead>
-                <TableHead>SKU</TableHead>
-                <TableHead className="text-right">Price</TableHead>
-                <TableHead className="text-right">COGS</TableHead>
-                <TableHead className="text-right">Margin</TableHead>
-                <TableHead className="text-right">Sold</TableHead>
-                <TableHead className="text-right">Revenue</TableHead>
-                <TableHead className="text-right">Profit</TableHead>
-                <TableHead>Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredProducts.map((product) => (
-                <TableRow key={product.id}>
-                  <TableCell>
-                    <div>
-                      <p className="font-medium">{product.title}</p>
-                      <p className="text-sm text-slate-500">{product.variant}</p>
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-slate-600">{product.sku}</TableCell>
-                  <TableCell className="text-right">{product.price} kr</TableCell>
-                  <TableCell className="text-right text-red-600">-{product.cogs} kr</TableCell>
-                  <TableCell className="text-right">
-                    <Badge variant={product.margin > 60 ? 'default' : 'secondary'}>
-                      {product.margin.toFixed(1)}%
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right">{product.sold}</TableCell>
-                  <TableCell className="text-right font-medium">
-                    {product.revenue.toLocaleString('sv-SE')} kr
-                  </TableCell>
-                  <TableCell className="text-right font-medium text-green-600">
-                    {product.profit.toLocaleString('sv-SE')} kr
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={
-                        product.status === 'active'
-                          ? 'default'
-                          : product.status === 'low_stock'
-                          ? 'outline'
-                          : 'secondary'
-                      }
+          {products.length === 0 ? (
+            <div className="text-center py-12 text-slate-500">
+              <Package className="h-12 w-12 mx-auto mb-4 opacity-50" />
+              <p className="text-lg font-medium">No products found</p>
+              <p className="text-sm">Connect a store and sync products to see them here</p>
+            </div>
+          ) : (
+            <>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Product</TableHead>
+                    <TableHead>Vendor</TableHead>
+                    <TableHead className="text-right">Avg Price</TableHead>
+                    <TableHead className="text-right">COGS</TableHead>
+                    <TableHead className="text-right">Margin</TableHead>
+                    <TableHead className="text-right">Sold</TableHead>
+                    <TableHead className="text-right">Revenue</TableHead>
+                    <TableHead className="text-right">Profit</TableHead>
+                    <TableHead>Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {products.map((product) => (
+                    <TableRow key={product.id}>
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          {product.imageUrl ? (
+                            <Image
+                              src={product.imageUrl}
+                              alt={product.title}
+                              width={40}
+                              height={40}
+                              className="rounded object-cover"
+                              unoptimized
+                            />
+                          ) : (
+                            <div className="w-10 h-10 rounded bg-slate-100 flex items-center justify-center">
+                              <Package className="w-5 h-5 text-slate-400" />
+                            </div>
+                          )}
+                          <div>
+                            <p className="font-medium truncate max-w-[200px]">{product.title}</p>
+                            <p className="text-sm text-slate-500">{product.variants} variant{product.variants !== 1 ? 's' : ''}</p>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-slate-600">{product.vendor || '-'}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(product.avgPrice, product.currency)}</TableCell>
+                      <TableCell className="text-right">
+                        {product.hasCOGS ? (
+                          <span className="text-red-600">-{formatCurrency(product.cogs, product.currency)}</span>
+                        ) : (
+                          <span className="flex items-center justify-end gap-1 text-amber-600">
+                            <AlertCircle className="w-3 h-3" />
+                            Not set
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {product.hasCOGS ? (
+                          <Badge variant={product.margin > 50 ? 'default' : product.margin > 20 ? 'secondary' : 'destructive'}>
+                            {product.margin.toFixed(1)}%
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline">N/A</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">{product.unitsSold.toLocaleString()}</TableCell>
+                      <TableCell className="text-right font-medium">
+                        {formatCurrency(product.revenue, product.currency)}
+                      </TableCell>
+                      <TableCell className={`text-right font-medium ${product.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {formatCurrency(product.profit, product.currency)}
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={
+                            product.status === 'active'
+                              ? 'default'
+                              : product.status === 'draft'
+                              ? 'outline'
+                              : 'secondary'
+                          }
+                        >
+                          {product.status}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+
+              {/* Pagination */}
+              {pagination.totalPages > 1 && (
+                <div className="flex items-center justify-between mt-4 pt-4 border-t">
+                  <p className="text-sm text-slate-600">
+                    Showing {((pagination.page - 1) * 50) + 1} to {Math.min(pagination.page * 50, pagination.total)} of {pagination.total} products
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPage(p => Math.max(1, p - 1))}
+                      disabled={pagination.page === 1}
                     >
-                      {product.status === 'active'
-                        ? 'Active'
-                        : product.status === 'low_stock'
-                        ? 'Low Stock'
-                        : 'Inactive'}
-                    </Badge>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <span className="text-sm">
+                      Page {pagination.page} of {pagination.totalPages}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPage(p => Math.min(pagination.totalPages, p + 1))}
+                      disabled={pagination.page === pagination.totalPages}
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
         </CardContent>
       </Card>
     </div>

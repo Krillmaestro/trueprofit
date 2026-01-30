@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -13,29 +13,136 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
-import { Search, Download, ShoppingCart, DollarSign, TrendingUp, Package } from 'lucide-react'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Search, Download, ShoppingCart, DollarSign, TrendingUp, Package, ChevronLeft, ChevronRight } from 'lucide-react'
 
-// Demo data
-const demoOrders = [
-  { id: '#1247', date: '2025-01-28', customer: 'Anna S.', items: 3, revenue: 1247, cogs: 420, fees: 45, profit: 782, margin: 62.7, status: 'Fulfilled' },
-  { id: '#1246', date: '2025-01-28', customer: 'Erik L.', items: 1, revenue: 599, cogs: 180, fees: 22, profit: 397, margin: 66.3, status: 'Fulfilled' },
-  { id: '#1245', date: '2025-01-27', customer: 'Maria K.', items: 2, revenue: 848, cogs: 285, fees: 31, profit: 532, margin: 62.7, status: 'Pending' },
-  { id: '#1244', date: '2025-01-27', customer: 'Johan P.', items: 4, revenue: 1596, cogs: 540, fees: 58, profit: 998, margin: 62.5, status: 'Fulfilled' },
-  { id: '#1243', date: '2025-01-26', customer: 'Lisa B.', items: 1, revenue: 299, cogs: 85, fees: 11, profit: 203, margin: 67.9, status: 'Fulfilled' },
-]
+interface Order {
+  id: string
+  orderNumber: string
+  date: string
+  customer: string
+  customerEmail: string | null
+  items: number
+  revenue: number
+  cogs: number
+  shipping: number
+  fees: number
+  profit: number
+  margin: number
+  status: string
+  financialStatus: string
+  currency: string
+}
+
+interface OrdersData {
+  orders: Order[]
+  totals: {
+    revenue: number
+    cogs: number
+    fees: number
+    profit: number
+    items: number
+    avgMargin: number
+    orderCount: number
+  }
+  pagination: {
+    page: number
+    limit: number
+    total: number
+    totalPages: number
+  }
+}
 
 export default function OrdersPage() {
   const [searchTerm, setSearchTerm] = useState('')
+  const [data, setData] = useState<OrdersData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [page, setPage] = useState(1)
 
-  const filteredOrders = demoOrders.filter(
-    (o) =>
-      o.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      o.customer.toLowerCase().includes(searchTerm.toLowerCase())
-  )
+  useEffect(() => {
+    const fetchOrders = async () => {
+      setLoading(true)
+      try {
+        const params = new URLSearchParams({
+          page: page.toString(),
+          limit: '50',
+        })
+        if (searchTerm) {
+          params.set('search', searchTerm)
+        }
 
-  const totalRevenue = demoOrders.reduce((sum, o) => sum + o.revenue, 0)
-  const totalProfit = demoOrders.reduce((sum, o) => sum + o.profit, 0)
-  const avgMargin = demoOrders.reduce((sum, o) => sum + o.margin, 0) / demoOrders.length
+        const res = await fetch(`/api/orders?${params}`)
+        if (res.ok) {
+          const json = await res.json()
+          setData(json)
+        }
+      } catch (error) {
+        console.error('Failed to fetch orders:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    // Debounce search
+    const timeout = setTimeout(fetchOrders, searchTerm ? 300 : 0)
+    return () => clearTimeout(timeout)
+  }, [page, searchTerm])
+
+  const formatCurrency = (amount: number, currency = 'SEK') => {
+    return new Intl.NumberFormat('sv-SE', {
+      style: 'currency',
+      currency,
+      maximumFractionDigits: 0,
+    }).format(amount)
+  }
+
+  const getStatusVariant = (status: string): 'default' | 'secondary' | 'outline' | 'destructive' => {
+    switch (status?.toLowerCase()) {
+      case 'fulfilled':
+        return 'default'
+      case 'partial':
+        return 'secondary'
+      case 'unfulfilled':
+        return 'outline'
+      default:
+        return 'outline'
+    }
+  }
+
+  if (loading && !data) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <Skeleton className="h-8 w-32 mb-2" />
+            <Skeleton className="h-4 w-48" />
+          </div>
+          <Skeleton className="h-10 w-24" />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map((i) => (
+            <Card key={i}>
+              <CardContent className="pt-6">
+                <Skeleton className="h-16 w-full" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+        <Card>
+          <CardHeader>
+            <Skeleton className="h-6 w-24" />
+          </CardHeader>
+          <CardContent>
+            <Skeleton className="h-64 w-full" />
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  const orders = data?.orders || []
+  const totals = data?.totals || { revenue: 0, profit: 0, avgMargin: 0, orderCount: 0 }
+  const pagination = data?.pagination || { page: 1, totalPages: 1, total: 0 }
 
   return (
     <div className="space-y-6">
@@ -58,7 +165,7 @@ export default function OrdersPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-slate-600">Total Orders</p>
-                <p className="text-2xl font-bold text-slate-800">{demoOrders.length}</p>
+                <p className="text-2xl font-bold text-slate-800">{pagination.total.toLocaleString()}</p>
               </div>
               <ShoppingCart className="h-8 w-8 text-blue-500 opacity-50" />
             </div>
@@ -71,7 +178,7 @@ export default function OrdersPage() {
               <div>
                 <p className="text-sm text-slate-600">Total Revenue</p>
                 <p className="text-2xl font-bold text-slate-800">
-                  {totalRevenue.toLocaleString('sv-SE')} kr
+                  {formatCurrency(totals.revenue)}
                 </p>
               </div>
               <DollarSign className="h-8 w-8 text-green-500 opacity-50" />
@@ -84,8 +191,8 @@ export default function OrdersPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-slate-600">Total Profit</p>
-                <p className="text-2xl font-bold text-green-600">
-                  {totalProfit.toLocaleString('sv-SE')} kr
+                <p className={`text-2xl font-bold ${totals.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  {formatCurrency(totals.profit)}
                 </p>
               </div>
               <TrendingUp className="h-8 w-8 text-green-500 opacity-50" />
@@ -98,7 +205,7 @@ export default function OrdersPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-slate-600">Avg Margin</p>
-                <p className="text-2xl font-bold text-slate-800">{avgMargin.toFixed(1)}%</p>
+                <p className="text-2xl font-bold text-slate-800">{totals.avgMargin.toFixed(1)}%</p>
               </div>
               <Package className="h-8 w-8 text-purple-500 opacity-50" />
             </div>
@@ -119,55 +226,98 @@ export default function OrdersPage() {
               <Input
                 placeholder="Search orders..."
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={(e) => {
+                  setSearchTerm(e.target.value)
+                  setPage(1)
+                }}
                 className="pl-10"
               />
             </div>
           </div>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Order</TableHead>
-                <TableHead>Date</TableHead>
-                <TableHead>Customer</TableHead>
-                <TableHead className="text-right">Items</TableHead>
-                <TableHead className="text-right">Revenue</TableHead>
-                <TableHead className="text-right">COGS</TableHead>
-                <TableHead className="text-right">Fees</TableHead>
-                <TableHead className="text-right">Profit</TableHead>
-                <TableHead className="text-right">Margin</TableHead>
-                <TableHead>Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredOrders.map((order) => (
-                <TableRow key={order.id}>
-                  <TableCell className="font-medium">{order.id}</TableCell>
-                  <TableCell className="text-slate-600">{order.date}</TableCell>
-                  <TableCell>{order.customer}</TableCell>
-                  <TableCell className="text-right">{order.items}</TableCell>
-                  <TableCell className="text-right">{order.revenue} kr</TableCell>
-                  <TableCell className="text-right text-red-600">-{order.cogs} kr</TableCell>
-                  <TableCell className="text-right text-red-600">-{order.fees} kr</TableCell>
-                  <TableCell className="text-right font-medium text-green-600">
-                    {order.profit} kr
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Badge variant={order.margin > 60 ? 'default' : 'secondary'}>
-                      {order.margin.toFixed(1)}%
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={order.status === 'Fulfilled' ? 'default' : 'outline'}>
-                      {order.status}
-                    </Badge>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          {orders.length === 0 ? (
+            <div className="text-center py-12 text-slate-500">
+              <ShoppingCart className="h-12 w-12 mx-auto mb-4 opacity-50" />
+              <p className="text-lg font-medium">No orders found</p>
+              <p className="text-sm">Connect a store and sync orders to see them here</p>
+            </div>
+          ) : (
+            <>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Order</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Customer</TableHead>
+                    <TableHead className="text-right">Items</TableHead>
+                    <TableHead className="text-right">Revenue</TableHead>
+                    <TableHead className="text-right">COGS</TableHead>
+                    <TableHead className="text-right">Fees</TableHead>
+                    <TableHead className="text-right">Profit</TableHead>
+                    <TableHead className="text-right">Margin</TableHead>
+                    <TableHead>Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {orders.map((order) => (
+                    <TableRow key={order.id}>
+                      <TableCell className="font-medium">{order.orderNumber}</TableCell>
+                      <TableCell className="text-slate-600">{order.date}</TableCell>
+                      <TableCell>{order.customer}</TableCell>
+                      <TableCell className="text-right">{order.items}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(order.revenue, order.currency)}</TableCell>
+                      <TableCell className="text-right text-red-600">-{formatCurrency(order.cogs, order.currency)}</TableCell>
+                      <TableCell className="text-right text-red-600">-{formatCurrency(order.fees, order.currency)}</TableCell>
+                      <TableCell className={`text-right font-medium ${order.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {formatCurrency(order.profit, order.currency)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Badge variant={order.margin > 50 ? 'default' : order.margin > 20 ? 'secondary' : 'destructive'}>
+                          {order.margin.toFixed(1)}%
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={getStatusVariant(order.status)}>
+                          {order.status || 'unknown'}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+
+              {/* Pagination */}
+              {pagination.totalPages > 1 && (
+                <div className="flex items-center justify-between mt-4 pt-4 border-t">
+                  <p className="text-sm text-slate-600">
+                    Showing {((pagination.page - 1) * 50) + 1} to {Math.min(pagination.page * 50, pagination.total)} of {pagination.total} orders
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPage(p => Math.max(1, p - 1))}
+                      disabled={pagination.page === 1}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <span className="text-sm">
+                      Page {pagination.page} of {pagination.totalPages}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPage(p => Math.min(pagination.totalPages, p + 1))}
+                      disabled={pagination.page === pagination.totalPages}
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
         </CardContent>
       </Card>
     </div>

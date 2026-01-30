@@ -73,7 +73,8 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function handleOrderWebhook(storeId: string, orderData: any) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function handleOrderWebhook(storeId: string, orderData: Record<string, any>) {
   const order = await prisma.order.upsert({
     where: {
       storeId_shopifyOrderId: {
@@ -178,7 +179,8 @@ async function handleOrderWebhook(storeId: string, orderData: any) {
   }
 }
 
-async function handleProductWebhook(storeId: string, productData: any) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function handleProductWebhook(storeId: string, productData: Record<string, any>) {
   const product = await prisma.product.upsert({
     where: {
       storeId_shopifyProductId: {
@@ -239,7 +241,8 @@ async function handleProductWebhook(storeId: string, productData: any) {
   }
 }
 
-async function handleProductDelete(storeId: string, productData: any) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function handleProductDelete(storeId: string, productData: Record<string, any>) {
   await prisma.product.updateMany({
     where: {
       storeId,
@@ -251,7 +254,8 @@ async function handleProductDelete(storeId: string, productData: any) {
   })
 }
 
-async function handleRefundWebhook(storeId: string, refundData: any) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function handleRefundWebhook(storeId: string, refundData: Record<string, any>) {
   const order = await prisma.order.findFirst({
     where: {
       storeId,
@@ -294,7 +298,7 @@ async function handleAppUninstalled(storeId: string) {
     where: { id: storeId },
     data: {
       isActive: false,
-      shopifyAccessToken: null,
+      shopifyAccessTokenEncrypted: null,
     },
   })
 }

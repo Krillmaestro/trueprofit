@@ -43,11 +43,13 @@ export function Sidebar() {
   const [collapsed, setCollapsed] = useState(false)
 
   return (
-    <div
+    <aside
       className={cn(
         'flex flex-col h-screen bg-slate-900 transition-all duration-300 relative',
         collapsed ? 'w-[72px]' : 'w-64'
       )}
+      role="navigation"
+      aria-label="Main navigation"
     >
       {/* Subtle gradient overlay */}
       <div className="absolute inset-0 bg-gradient-to-b from-slate-800/50 via-transparent to-slate-950/50 pointer-events-none" />
@@ -84,6 +86,7 @@ export function Sidebar() {
             size="icon"
             onClick={() => setCollapsed(!collapsed)}
             className="text-slate-500 hover:text-white hover:bg-slate-800/80 h-8 w-8"
+            aria-label="Collapse sidebar"
           >
             <ChevronLeft size={16} />
           </Button>
@@ -98,6 +101,7 @@ export function Sidebar() {
             size="icon"
             onClick={() => setCollapsed(!collapsed)}
             className="text-slate-500 hover:text-white hover:bg-slate-800/80 h-8 w-8"
+            aria-label="Expand sidebar"
           >
             <ChevronRight size={16} />
           </Button>
@@ -105,7 +109,7 @@ export function Sidebar() {
       )}
 
       {/* Main Navigation */}
-      <nav className="relative z-10 flex-1 px-3 py-4 space-y-1 overflow-y-auto scrollbar-thin">
+      <nav className="relative z-10 flex-1 px-3 py-4 space-y-1 overflow-y-auto scrollbar-thin" aria-label="Primary navigation">
         {navigation.map((item) => {
           const isActive = pathname === item.href ||
             (item.href !== '/dashboard' && pathname.startsWith(item.href))
@@ -203,6 +207,6 @@ export function Sidebar() {
           </div>
         </div>
       )}
-    </div>
+    </aside>
   )
 }

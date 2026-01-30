@@ -2,13 +2,29 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { decrypt } from '@/lib/encryption'
 import { ShopifyClient } from '@/services/shopify/client'
+import { syncRateLimiter, getRateLimitKey, getRateLimitHeaders } from '@/lib/rate-limit'
 
 export async function POST(request: NextRequest) {
   const session = await getServerSession(authOptions)
 
   if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  // Apply rate limiting based on user ID
+  const rateLimitKey = getRateLimitKey(request, session.user.id)
+  const rateLimitResult = syncRateLimiter(rateLimitKey)
+
+  if (rateLimitResult.limited) {
+    return NextResponse.json(
+      { error: 'Too many sync requests. Please wait before syncing again.' },
+      {
+        status: 429,
+        headers: getRateLimitHeaders(10, rateLimitResult.remaining, rateLimitResult.resetAt),
+      }
+    )
   }
 
   const { storeId, type } = await request.json()
@@ -27,13 +43,16 @@ export async function POST(request: NextRequest) {
     },
   })
 
-  if (!store || !store.shopifyAccessToken) {
+  if (!store || !store.shopifyAccessTokenEncrypted) {
     return NextResponse.json({ error: 'Store not found or not connected' }, { status: 404 })
   }
 
+  // Decrypt the access token for API calls
+  const accessToken = decrypt(store.shopifyAccessTokenEncrypted)
+
   const client = new ShopifyClient({
     shopDomain: store.shopifyDomain,
-    accessToken: store.shopifyAccessToken,
+    accessToken,
   })
 
   try {
@@ -163,6 +182,24 @@ async function syncOrders(storeId: string, client: ShopifyClient): Promise<{ ord
   const sinceDate = new Date()
   sinceDate.setDate(sinceDate.getDate() - 90)
 
+  // Pre-fetch all variants for this store to avoid N+1 queries
+  // This is more efficient than querying for each line item individually
+  const allVariants = await prisma.productVariant.findMany({
+    where: {
+      product: { storeId },
+    },
+    select: {
+      id: true,
+      shopifyVariantId: true,
+    },
+  })
+
+  // Build a lookup map for O(1) variant lookups
+  const variantLookup = new Map<string, string>()
+  for (const v of allVariants) {
+    variantLookup.set(v.shopifyVariantId.toString(), v.id)
+  }
+
   do {
     const response = await client.getOrders({
       limit: 250,
@@ -218,19 +255,12 @@ async function syncOrders(storeId: string, client: ShopifyClient): Promise<{ ord
         },
       })
 
-      // Sync line items and link to variants
+      // Sync line items and link to variants using pre-fetched lookup map
       for (const item of orderData.line_items || []) {
-        // Try to find the variant in our database
-        let variantId: string | null = null
-        if (item.variant_id) {
-          const variant = await prisma.productVariant.findFirst({
-            where: {
-              shopifyVariantId: BigInt(item.variant_id),
-              product: { storeId },
-            },
-          })
-          variantId = variant?.id || null
-        }
+        // Use lookup map for O(1) variant lookup instead of N+1 queries
+        const variantId = item.variant_id
+          ? variantLookup.get(item.variant_id.toString()) || null
+          : null
 
         await prisma.orderLineItem.upsert({
           where: {

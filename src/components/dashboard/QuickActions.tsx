@@ -4,13 +4,10 @@ import { cn } from '@/lib/utils'
 import Link from 'next/link'
 import {
   Upload,
-  Download,
   RefreshCw,
   FileText,
   ArrowRight,
   Plus,
-  Store,
-  Megaphone,
 } from 'lucide-react'
 
 interface QuickAction {

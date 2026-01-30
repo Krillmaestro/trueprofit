@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { cache, cacheKeys, cacheTTL } from '@/lib/cache'
+import { cacheKeys, cacheTTL, getOrCompute } from '@/lib/cache'
 
 // Default payment fee configuration (used when no gateway-specific config exists)
 const DEFAULT_FEE_RATE = 2.9 // percentage
@@ -39,20 +39,30 @@ export async function GET(request: NextRequest) {
     lte: endDate ? new Date(endDate) : defaultEndDate,
   }
 
-  // Build store filter
-  const storeFilter: { teamId: string; id?: string } = {
-    teamId: teamMember.teamId,
-  }
-  if (storeId) {
-    storeFilter.id = storeId
-  }
+  // Build cache key based on parameters
+  const cacheKey = cacheKeys.dashboardSummary(
+    teamMember.teamId,
+    dateFilter.gte.toISOString().split('T')[0],
+    dateFilter.lte.toISOString().split('T')[0],
+    storeId || undefined
+  )
 
-  // Get stores
-  const stores = await prisma.store.findMany({
-    where: storeFilter,
-  })
+  // Try to get from cache first, compute if not available
+  const result = await getOrCompute(cacheKey, cacheTTL.dashboardSummary, async () => {
+    // Build store filter
+    const storeFilter: { teamId: string; id?: string } = {
+      teamId: teamMember.teamId,
+    }
+    if (storeId) {
+      storeFilter.id = storeId
+    }
 
-  const storeIds = stores.map((s) => s.id)
+    // Get stores
+    const stores = await prisma.store.findMany({
+      where: storeFilter,
+    })
+
+    const storeIds = stores.map((s) => s.id)
 
   // Get payment fee configurations for the team
   const paymentFeeConfigs = await prisma.paymentFeeConfig.findMany({
@@ -289,58 +299,61 @@ export async function GET(request: NextRequest) {
     net: netRevenue,
   }
 
-  return NextResponse.json({
-    summary: {
-      revenue: netRevenue,
-      grossRevenue: totalRevenue,
-      costs: totalCosts,
-      profit: netProfit,
-      margin: profitMargin,
-      grossMargin,
-      orders: orders.length,
-      avgOrderValue: orders.length > 0 ? netRevenue / orders.length : 0,
-    },
-    breakdown: {
-      revenue: revenueBreakdown,
-      costs: {
-        cogs: totalCOGS,
-        shipping: totalShipping,
-        fees: totalFees,
-        adSpend: totalAdSpend,
-        fixed: fixedCosts,
-        variable: variableCosts,
-        salaries,
-        oneTime: oneTimeCosts,
-        total: totalCosts,
+    return {
+      summary: {
+        revenue: netRevenue,
+        grossRevenue: totalRevenue,
+        costs: totalCosts,
+        profit: netProfit,
+        margin: profitMargin,
+        grossMargin,
+        orders: orders.length,
+        avgOrderValue: orders.length > 0 ? netRevenue / orders.length : 0,
       },
-      profit: {
-        gross: grossProfit,
-        operating: operatingProfit,
-        net: netProfit,
+      breakdown: {
+        revenue: revenueBreakdown,
+        costs: {
+          cogs: totalCOGS,
+          shipping: totalShipping,
+          fees: totalFees,
+          adSpend: totalAdSpend,
+          fixed: fixedCosts,
+          variable: variableCosts,
+          salaries,
+          oneTime: oneTimeCosts,
+          total: totalCosts,
+        },
+        profit: {
+          gross: grossProfit,
+          operating: operatingProfit,
+          net: netProfit,
+        },
       },
-    },
-    chartData: {
-      daily: dailyData,
-      costBreakdown,
-    },
-    ads: {
-      spend: totalAdSpend,
-      revenue: adRevenue,
-      roas,
-      impressions: adSpend._sum.impressions || 0,
-      clicks: adSpend._sum.clicks || 0,
-      conversions: adSpend._sum.conversions || 0,
-    },
-    period: {
-      startDate: dateFilter.gte,
-      endDate: dateFilter.lte,
-    },
-    dataQuality: {
-      totalLineItems: orders.reduce((sum, o) => sum + o.lineItems.length, 0),
-      unmatchedLineItems,
-      cogsCompleteness: orders.reduce((sum, o) => sum + o.lineItems.length, 0) > 0
-        ? ((orders.reduce((sum, o) => sum + o.lineItems.length, 0) - unmatchedLineItems) / orders.reduce((sum, o) => sum + o.lineItems.length, 0)) * 100
-        : 100,
-    },
-  })
+      chartData: {
+        daily: dailyData,
+        costBreakdown,
+      },
+      ads: {
+        spend: totalAdSpend,
+        revenue: adRevenue,
+        roas,
+        impressions: adSpend._sum.impressions || 0,
+        clicks: adSpend._sum.clicks || 0,
+        conversions: adSpend._sum.conversions || 0,
+      },
+      period: {
+        startDate: dateFilter.gte.toISOString(),
+        endDate: dateFilter.lte.toISOString(),
+      },
+      dataQuality: {
+        totalLineItems: orders.reduce((sum, o) => sum + o.lineItems.length, 0),
+        unmatchedLineItems,
+        cogsCompleteness: orders.reduce((sum, o) => sum + o.lineItems.length, 0) > 0
+          ? ((orders.reduce((sum, o) => sum + o.lineItems.length, 0) - unmatchedLineItems) / orders.reduce((sum, o) => sum + o.lineItems.length, 0)) * 100
+          : 100,
+      },
+    }
+  }) // End of getOrCompute callback
+
+  return NextResponse.json(result)
 }

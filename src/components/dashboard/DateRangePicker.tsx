@@ -96,21 +96,6 @@ const presets: { label: string; getValue: () => { startDate: Date; endDate: Date
   },
 ]
 
-function formatDateRange(start: Date, end: Date): string {
-  const formatDate = (d: Date) =>
-    d.toLocaleDateString('sv-SE', { month: 'short', day: 'numeric' })
-
-  const sameYear = start.getFullYear() === end.getFullYear()
-  const sameMonth = sameYear && start.getMonth() === end.getMonth()
-  const sameDay = sameMonth && start.getDate() === end.getDate()
-
-  if (sameDay) {
-    return formatDate(start)
-  }
-
-  return `${formatDate(start)} - ${formatDate(end)}`
-}
-
 export function DateRangePicker({ value, onChange, className }: DateRangePickerProps) {
   const [open, setOpen] = useState(false)
 

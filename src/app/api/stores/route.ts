@@ -4,7 +4,8 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
 // GET /api/stores - Get all stores for the user's team
-export async function GET(request: NextRequest) {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export async function GET(_request: NextRequest) {
   const session = await getServerSession(authOptions)
 
   if (!session?.user?.id) {
@@ -99,7 +100,7 @@ export async function DELETE(request: NextRequest) {
     where: { id: storeId },
     data: {
       isActive: false,
-      shopifyAccessToken: null,
+      shopifyAccessTokenEncrypted: null,
     },
   })
 

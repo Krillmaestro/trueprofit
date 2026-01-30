@@ -11,7 +11,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Separator } from '@/components/ui/separator'
 
 export default function RegisterPage() {
-  const router = useRouter()
+  const _router = useRouter() // eslint-disable-line @typescript-eslint/no-unused-vars -- reserved for future navigation
 
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
@@ -68,7 +68,7 @@ export default function RegisterPage() {
 
         <CardContent className="space-y-4">
           {error && (
-            <div className="bg-red-50 text-red-600 text-sm p-3 rounded-lg">
+            <div className="bg-red-50 text-red-600 text-sm p-3 rounded-lg" role="alert" aria-live="polite">
               {error}
             </div>
           )}
@@ -107,7 +107,7 @@ export default function RegisterPage() {
             </span>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4" aria-label="Registration form">
             <div className="space-y-2">
               <Label htmlFor="name">Full name</Label>
               <Input
@@ -117,6 +117,8 @@ export default function RegisterPage() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 required
+                autoComplete="name"
+                aria-describedby={error ? 'register-error' : undefined}
               />
             </div>
 
@@ -129,6 +131,8 @@ export default function RegisterPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
+                autoComplete="email"
+                aria-describedby={error ? 'register-error' : undefined}
               />
             </div>
 
@@ -142,11 +146,13 @@ export default function RegisterPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 minLength={8}
+                autoComplete="new-password"
+                aria-describedby="password-requirements"
               />
-              <p className="text-xs text-slate-500">Minimum 8 characters</p>
+              <p id="password-requirements" className="text-xs text-slate-500">Minimum 8 characters</p>
             </div>
 
-            <Button type="submit" className="w-full" disabled={loading}>
+            <Button type="submit" className="w-full" disabled={loading} aria-busy={loading}>
               {loading ? 'Creating account...' : 'Create account'}
             </Button>
           </form>
