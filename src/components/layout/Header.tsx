@@ -1,6 +1,7 @@
 'use client'
 
 import { useSession, signOut } from 'next-auth/react'
+import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -11,17 +12,57 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { Bell, LogOut, Settings, User, Search, Command, Store } from 'lucide-react'
+import { Bell, LogOut, Settings, User, Search, Command, Store, Check } from 'lucide-react'
 import Link from 'next/link'
+
+interface StoreData {
+  id: string
+  name: string | null
+  shopifyDomain: string
+  isActive: boolean
+}
 
 export function Header() {
   const { data: session } = useSession()
+  const [stores, setStores] = useState<StoreData[]>([])
+  const [selectedStore, setSelectedStore] = useState<StoreData | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    fetchStores()
+  }, [])
+
+  const fetchStores = async () => {
+    try {
+      const res = await fetch('/api/stores')
+      if (res.ok) {
+        const data = await res.json()
+        setStores(data)
+        // Select first active store by default
+        const activeStore = data.find((s: StoreData) => s.isActive) || data[0]
+        if (activeStore) {
+          setSelectedStore(activeStore)
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch stores:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleStoreSelect = (store: StoreData) => {
+    setSelectedStore(store)
+    // TODO: Trigger data refresh for selected store
+  }
 
   const initials = session?.user?.name
     ?.split(' ')
     .map((n) => n[0])
     .join('')
     .toUpperCase() || 'U'
+
+  const displayName = selectedStore?.name || selectedStore?.shopifyDomain?.replace('.myshopify.com', '') || 'Select Store'
 
   return (
     <header className="h-16 bg-white/80 backdrop-blur-md border-b border-slate-200/60 flex items-center justify-between px-6 sticky top-0 z-40" role="banner">
@@ -44,26 +85,52 @@ export function Header() {
               <div className="w-6 h-6 bg-gradient-to-br from-emerald-400 to-cyan-500 rounded-md flex items-center justify-center">
                 <Store size={14} className="text-white" />
               </div>
-              <span className="font-medium text-slate-700">My Store</span>
+              <span className="font-medium text-slate-700 max-w-[150px] truncate">
+                {loading ? 'Loading...' : displayName}
+              </span>
               <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent className="w-56" align="start">
+          <DropdownMenuContent className="w-64" align="start">
             <DropdownMenuLabel>Your Stores</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem className="cursor-pointer">
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 bg-gradient-to-br from-emerald-400 to-cyan-500 rounded-md flex items-center justify-center">
-                  <Store size={14} className="text-white" />
-                </div>
-                <div>
-                  <div className="font-medium text-sm">My Store</div>
-                  <div className="text-xs text-slate-500">mystore.myshopify.com</div>
-                </div>
+            {stores.length === 0 && !loading ? (
+              <div className="px-2 py-4 text-center">
+                <p className="text-sm text-slate-500">No stores connected</p>
+                <Link href="/settings/stores" className="text-sm text-blue-600 hover:underline mt-1 block">
+                  Connect your first store
+                </Link>
               </div>
-            </DropdownMenuItem>
+            ) : (
+              stores.map((store) => (
+                <DropdownMenuItem
+                  key={store.id}
+                  className="cursor-pointer"
+                  onClick={() => handleStoreSelect(store)}
+                >
+                  <div className="flex items-center gap-2 w-full">
+                    <div className={`w-6 h-6 rounded-md flex items-center justify-center ${
+                      store.isActive
+                        ? 'bg-gradient-to-br from-emerald-400 to-cyan-500'
+                        : 'bg-slate-300'
+                    }`}>
+                      <Store size={14} className="text-white" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-sm truncate">
+                        {store.name || store.shopifyDomain.replace('.myshopify.com', '')}
+                      </div>
+                      <div className="text-xs text-slate-500 truncate">{store.shopifyDomain}</div>
+                    </div>
+                    {selectedStore?.id === store.id && (
+                      <Check size={16} className="text-emerald-600 flex-shrink-0" />
+                    )}
+                  </div>
+                </DropdownMenuItem>
+              ))
+            )}
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild className="cursor-pointer">
               <Link href="/settings/stores">
@@ -77,10 +144,12 @@ export function Header() {
 
       <div className="flex items-center gap-3">
         {/* Live indicator */}
-        <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-emerald-50 rounded-full">
-          <div className="w-2 h-2 bg-emerald-500 rounded-full status-dot-pulse" />
-          <span className="text-xs font-medium text-emerald-700">Live</span>
-        </div>
+        {selectedStore?.isActive && (
+          <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-emerald-50 rounded-full">
+            <div className="w-2 h-2 bg-emerald-500 rounded-full status-dot-pulse" />
+            <span className="text-xs font-medium text-emerald-700">Live</span>
+          </div>
+        )}
 
         {/* Notifications */}
         <Button

@@ -30,7 +30,7 @@ export function ProfitMeter({ revenue, costs, profit, className }: ProfitMeterPr
   return (
     <div className={cn('relative', className)}>
       {/* Gauge Background */}
-      <svg viewBox="0 0 200 120" className="w-full">
+      <svg viewBox="0 0 200 130" className="w-full">
         <defs>
           <linearGradient id="gaugeGradient" x1="0%" y1="0%" x2="100%" y2="0%">
             <stop offset="0%" stopColor="#ef4444" />
@@ -53,7 +53,7 @@ export function ProfitMeter({ revenue, costs, profit, className }: ProfitMeterPr
           d="M 20 100 A 80 80 0 0 1 180 100"
           fill="none"
           stroke="#e2e8f0"
-          strokeWidth="12"
+          strokeWidth="14"
           strokeLinecap="round"
         />
 
@@ -62,18 +62,18 @@ export function ProfitMeter({ revenue, costs, profit, className }: ProfitMeterPr
           d="M 20 100 A 80 80 0 0 1 180 100"
           fill="none"
           stroke="url(#gaugeGradient)"
-          strokeWidth="12"
+          strokeWidth="14"
           strokeLinecap="round"
           className="opacity-90"
         />
 
         {/* Tick marks */}
-        {[-90, -60, -30, 0, 30, 60, 90].map((angle, i) => {
+        {[-90, -45, 0, 45, 90].map((angle, i) => {
           const rad = (angle * Math.PI) / 180
-          const x1 = 100 + 70 * Math.cos(rad - Math.PI)
-          const y1 = 100 + 70 * Math.sin(rad - Math.PI)
-          const x2 = 100 + 60 * Math.cos(rad - Math.PI)
-          const y2 = 100 + 60 * Math.sin(rad - Math.PI)
+          const x1 = 100 + 68 * Math.cos(rad - Math.PI)
+          const y1 = 100 + 68 * Math.sin(rad - Math.PI)
+          const x2 = 100 + 58 * Math.cos(rad - Math.PI)
+          const y2 = 100 + 58 * Math.sin(rad - Math.PI)
           return (
             <line
               key={i}
@@ -82,7 +82,7 @@ export function ProfitMeter({ revenue, costs, profit, className }: ProfitMeterPr
               x2={x2}
               y2={y2}
               stroke="#94a3b8"
-              strokeWidth="1"
+              strokeWidth="2"
             />
           )
         })}
@@ -90,51 +90,45 @@ export function ProfitMeter({ revenue, costs, profit, className }: ProfitMeterPr
         {/* Needle */}
         <g transform={`rotate(${needleRotation}, 100, 100)`} filter="url(#glow)">
           <path
-            d="M 98 100 L 100 30 L 102 100 Z"
+            d="M 97 100 L 100 25 L 103 100 Z"
             fill="#1e293b"
             className="drop-shadow-lg"
           />
-          <circle cx="100" cy="100" r="8" fill="#1e293b" />
-          <circle cx="100" cy="100" r="4" fill="#f8fafc" />
+          <circle cx="100" cy="100" r="10" fill="#1e293b" />
+          <circle cx="100" cy="100" r="5" fill="#f8fafc" />
         </g>
 
-        {/* Labels */}
-        <text x="20" y="115" fontSize="10" fill="#94a3b8" textAnchor="middle">
+        {/* Labels - positioned below the arc */}
+        <text x="15" y="125" fontSize="12" fill="#64748b" textAnchor="start" fontWeight="500">
           -50%
         </text>
-        <text x="100" y="115" fontSize="10" fill="#94a3b8" textAnchor="middle">
+        <text x="100" y="125" fontSize="12" fill="#64748b" textAnchor="middle" fontWeight="500">
           0%
         </text>
-        <text x="180" y="115" fontSize="10" fill="#94a3b8" textAnchor="middle">
+        <text x="185" y="125" fontSize="12" fill="#64748b" textAnchor="end" fontWeight="500">
           +50%
         </text>
       </svg>
 
-      {/* Center value display */}
-      <div className="absolute inset-x-0 bottom-0 text-center">
-        <div className={cn(
-          'text-3xl font-bold tracking-tight',
-          profit >= 0 ? 'text-emerald-600' : 'text-rose-600'
-        )}>
-          {profit >= 0 ? '+' : ''}{profitMargin.toFixed(1)}%
-        </div>
-        <div className="text-sm text-slate-500 mt-1">Profit Margin</div>
-      </div>
-
-      {/* Revenue/Cost breakdown */}
-      <div className="grid grid-cols-3 gap-4 mt-8 pt-4 border-t border-slate-100">
+      {/* Stats below gauge */}
+      <div className="grid grid-cols-3 gap-4 mt-6 pt-6 border-t border-slate-100">
         <div className="text-center">
           <div className="text-xs font-medium text-slate-400 uppercase tracking-wider">Revenue</div>
-          <div className="text-lg font-semibold text-slate-700 mt-1">{formatCurrency(revenue)} kr</div>
+          <div className="text-xl font-bold text-slate-700 mt-1">{formatCurrency(revenue)} kr</div>
         </div>
-        <div className="text-center border-x border-slate-100">
-          <div className="text-xs font-medium text-slate-400 uppercase tracking-wider">Costs</div>
-          <div className="text-lg font-semibold text-rose-600 mt-1">-{formatCurrency(costs)} kr</div>
+        <div className="text-center">
+          <div className={cn(
+            'text-3xl font-bold',
+            profit >= 0 ? 'text-emerald-600' : 'text-rose-600'
+          )}>
+            {profit >= 0 ? '+' : ''}{profitMargin.toFixed(1)}%
+          </div>
+          <div className="text-xs font-medium text-slate-400 uppercase tracking-wider mt-1">Profit Margin</div>
         </div>
         <div className="text-center">
           <div className="text-xs font-medium text-slate-400 uppercase tracking-wider">Profit</div>
           <div className={cn(
-            'text-lg font-semibold mt-1',
+            'text-xl font-bold mt-1',
             profit >= 0 ? 'text-emerald-600' : 'text-rose-600'
           )}>
             {profit >= 0 ? '+' : ''}{formatCurrency(profit)} kr

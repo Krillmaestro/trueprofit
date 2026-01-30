@@ -171,8 +171,16 @@ export async function GET(request: NextRequest) {
   const grossProfit = netRevenue - totalCOGS - totalShipping
   const operatingProfit = grossProfit - totalFees
 
-  // Get custom costs for the period
-  const customCosts = await prisma.customCostEntry.findMany({
+  // Calculate days in the selected period
+  const periodStartMs = dateFilter.gte.getTime()
+  const periodEndMs = dateFilter.lte.getTime()
+  const daysInPeriod = Math.max(1, Math.ceil((periodEndMs - periodStartMs) / (1000 * 60 * 60 * 24)) + 1)
+
+  // Get days in the month (for monthly costs distribution)
+  const daysInMonth = new Date(dateFilter.gte.getFullYear(), dateFilter.gte.getMonth() + 1, 0).getDate()
+
+  // Get custom costs for the period (direct entries)
+  const customCostEntries = await prisma.customCostEntry.findMany({
     where: {
       cost: {
         teamId: teamMember.teamId,
@@ -185,21 +193,49 @@ export async function GET(request: NextRequest) {
     },
   })
 
-  const fixedCosts = customCosts
+  // Also get monthly recurring costs that should be distributed
+  const monthlyCosts = await prisma.customCost.findMany({
+    where: {
+      teamId: teamMember.teamId,
+      isActive: true,
+      recurrenceType: 'MONTHLY',
+    },
+  })
+
+  // Calculate costs with daily distribution for monthly expenses
+  // Monthly costs are divided by days in month, then multiplied by days in period
+  const dailyDistributionFactor = daysInPeriod / daysInMonth
+
+  // Sum up monthly costs distributed for the period
+  const distributedFixedCosts = monthlyCosts
+    .filter((c) => c.costType === 'FIXED')
+    .reduce((sum, c) => sum + (Number(c.amount || 0) * dailyDistributionFactor), 0)
+
+  const distributedSalaries = monthlyCosts
+    .filter((c) => c.costType === 'SALARY')
+    .reduce((sum, c) => sum + (Number(c.amount || 0) * dailyDistributionFactor), 0)
+
+  // Add any direct entries
+  const directFixedCosts = customCostEntries
     .filter((c) => c.cost.costType === 'FIXED')
     .reduce((sum, c) => sum + Number(c.amount), 0)
 
-  const variableCosts = customCosts
+  const directVariableCosts = customCostEntries
     .filter((c) => c.cost.costType === 'VARIABLE')
     .reduce((sum, c) => sum + Number(c.amount), 0)
 
-  const salaries = customCosts
+  const directSalaries = customCostEntries
     .filter((c) => c.cost.costType === 'SALARY')
     .reduce((sum, c) => sum + Number(c.amount), 0)
 
-  const oneTimeCosts = customCosts
+  const oneTimeCosts = customCostEntries
     .filter((c) => c.cost.costType === 'ONE_TIME')
     .reduce((sum, c) => sum + Number(c.amount), 0)
+
+  // Combine distributed monthly costs with direct entries
+  const fixedCosts = distributedFixedCosts + directFixedCosts
+  const variableCosts = directVariableCosts
+  const salaries = distributedSalaries + directSalaries
 
   // Get ad spend for the period
   const adSpend = await prisma.adSpend.aggregate({

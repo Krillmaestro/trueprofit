@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -12,30 +12,180 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Badge } from '@/components/ui/badge'
-import { Search, Upload, Download, DollarSign, Package, TrendingUp } from 'lucide-react'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Search, Upload, Download, DollarSign, Package, TrendingUp, Save, Loader2 } from 'lucide-react'
 
-// Demo data
-const demoProducts = [
-  { id: '1', title: 'Premium T-Shirt', sku: 'TSH-001', price: 299, cogs: 85, margin: 71.6, stock: 245 },
-  { id: '2', title: 'Hoodie Classic', sku: 'HOD-001', price: 599, cogs: 180, margin: 69.9, stock: 128 },
-  { id: '3', title: 'Cap Snapback', sku: 'CAP-001', price: 249, cogs: 65, margin: 73.9, stock: 312 },
-  { id: '4', title: 'Joggers Pro', sku: 'JOG-001', price: 449, cogs: 145, margin: 67.7, stock: 89 },
-  { id: '5', title: 'Socks 3-Pack', sku: 'SOC-003', price: 149, cogs: 35, margin: 76.5, stock: 523 },
+interface ProductCOGS {
+  variantId: string
+  shopifyVariantId: bigint
+  productId: string
+  productTitle: string
+  variantTitle: string | null
+  sku: string | null
+  price: number
+  inventoryQuantity: number
+  imageUrl: string | null
+  store: { id: string; name: string | null; currency: string | null }
+  cogs: { costPrice: number; source: string } | null
+  hasCogs: boolean
+  vatRate: number
+}
+
+// Swedish VAT rates
+const VAT_RATES = [
+  { value: '25', label: '25% (Standard)' },
+  { value: '12', label: '12% (Food, hotels)' },
+  { value: '6', label: '6% (Books, culture)' },
+  { value: '0', label: '0% (Export, exempt)' },
 ]
 
 export default function COGSPage() {
   const [searchTerm, setSearchTerm] = useState('')
+  const [products, setProducts] = useState<ProductCOGS[]>([])
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState<string | null>(null)
+  const [pendingChanges, setPendingChanges] = useState<Map<string, { cogs?: number; vatRate?: number }>>(new Map())
 
-  const filteredProducts = demoProducts.filter(
+  const fetchProducts = useCallback(async () => {
+    try {
+      const res = await fetch('/api/cogs')
+      if (res.ok) {
+        const data = await res.json()
+        setProducts(data)
+      }
+    } catch (error) {
+      console.error('Failed to fetch products:', error)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchProducts()
+  }, [fetchProducts])
+
+  const handleCogsChange = (variantId: string, value: string) => {
+    const numValue = parseFloat(value) || 0
+    setPendingChanges(prev => {
+      const updated = new Map(prev)
+      const existing = updated.get(variantId) || {}
+      updated.set(variantId, { ...existing, cogs: numValue })
+      return updated
+    })
+  }
+
+  const handleVatChange = (variantId: string, value: string) => {
+    const numValue = parseFloat(value)
+    setPendingChanges(prev => {
+      const updated = new Map(prev)
+      const existing = updated.get(variantId) || {}
+      updated.set(variantId, { ...existing, vatRate: numValue })
+      return updated
+    })
+  }
+
+  const saveChanges = async (variantId: string) => {
+    const changes = pendingChanges.get(variantId)
+    if (!changes) return
+
+    const product = products.find(p => p.variantId === variantId)
+    if (!product) return
+
+    setSaving(variantId)
+    try {
+      const res = await fetch('/api/cogs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          variantId,
+          cost: changes.cogs ?? product.cogs?.costPrice ?? 0,
+          vatRate: changes.vatRate ?? product.vatRate,
+        }),
+      })
+
+      if (res.ok) {
+        // Update local state
+        setProducts(prev => prev.map(p => {
+          if (p.variantId === variantId) {
+            return {
+              ...p,
+              cogs: { costPrice: changes.cogs ?? p.cogs?.costPrice ?? 0, source: 'MANUAL' },
+              vatRate: changes.vatRate ?? p.vatRate,
+              hasCogs: true,
+            }
+          }
+          return p
+        }))
+        // Clear pending changes
+        setPendingChanges(prev => {
+          const updated = new Map(prev)
+          updated.delete(variantId)
+          return updated
+        })
+      }
+    } catch (error) {
+      console.error('Failed to save:', error)
+    } finally {
+      setSaving(null)
+    }
+  }
+
+  const filteredProducts = products.filter(
     (p) =>
-      p.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.sku.toLowerCase().includes(searchTerm.toLowerCase())
+      p.productTitle.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (p.sku && p.sku.toLowerCase().includes(searchTerm.toLowerCase()))
   )
 
-  const totalInventoryValue = demoProducts.reduce((sum, p) => sum + p.cogs * p.stock, 0)
-  const totalRetailValue = demoProducts.reduce((sum, p) => sum + p.price * p.stock, 0)
-  const avgMargin = demoProducts.reduce((sum, p) => sum + p.margin, 0) / demoProducts.length
+  const totalInventoryValue = products.reduce((sum, p) => {
+    const cogs = pendingChanges.get(p.variantId)?.cogs ?? p.cogs?.costPrice ?? 0
+    return sum + cogs * p.inventoryQuantity
+  }, 0)
+
+  const totalRetailValue = products.reduce((sum, p) => sum + Number(p.price) * p.inventoryQuantity, 0)
+
+  const productsWithCogs = products.filter(p => p.hasCogs || pendingChanges.has(p.variantId)).length
+
+  const avgMargin = products.length > 0
+    ? products.reduce((sum, p) => {
+        const cogs = pendingChanges.get(p.variantId)?.cogs ?? p.cogs?.costPrice ?? 0
+        const margin = Number(p.price) > 0 ? ((Number(p.price) - cogs) / Number(p.price)) * 100 : 0
+        return sum + margin
+      }, 0) / products.length
+    : 0
+
+  const getMargin = (price: number, cogs: number) => {
+    return price > 0 ? ((price - cogs) / price) * 100 : 0
+  }
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <Skeleton className="h-8 w-48 mb-2" />
+            <Skeleton className="h-4 w-64" />
+          </div>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map(i => (
+            <Card key={i}>
+              <CardContent className="pt-6">
+                <Skeleton className="h-16 w-full" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
@@ -43,7 +193,7 @@ export default function COGSPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">COGS Management</h1>
-          <p className="text-slate-600">Manage Cost of Goods Sold for your products</p>
+          <p className="text-slate-600">Manage Cost of Goods Sold and VAT for your products</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline">
@@ -105,10 +255,14 @@ export default function COGSPage() {
               <div>
                 <p className="text-sm text-slate-600">Products with COGS</p>
                 <p className="text-2xl font-bold text-slate-800">
-                  {demoProducts.length} / {demoProducts.length}
+                  {productsWithCogs} / {products.length}
                 </p>
               </div>
-              <div className="text-green-500 text-sm font-medium">100%</div>
+              <div className={`text-sm font-medium ${
+                productsWithCogs === products.length ? 'text-green-500' : 'text-amber-500'
+              }`}>
+                {products.length > 0 ? Math.round((productsWithCogs / products.length) * 100) : 0}%
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -120,7 +274,7 @@ export default function COGSPage() {
           <div className="flex items-center justify-between">
             <div>
               <CardTitle>Product COGS</CardTitle>
-              <CardDescription>Set and manage COGS for each product variant</CardDescription>
+              <CardDescription>Set and manage COGS and VAT for each product variant</CardDescription>
             </div>
             <div className="relative w-64">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
@@ -134,48 +288,112 @@ export default function COGSPage() {
           </div>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Product</TableHead>
-                <TableHead>SKU</TableHead>
-                <TableHead className="text-right">Price</TableHead>
-                <TableHead className="text-right">COGS</TableHead>
-                <TableHead className="text-right">Margin</TableHead>
-                <TableHead className="text-right">Stock</TableHead>
-                <TableHead className="text-right">Inventory Value</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredProducts.map((product) => (
-                <TableRow key={product.id}>
-                  <TableCell className="font-medium">{product.title}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{product.sku}</Badge>
-                  </TableCell>
-                  <TableCell className="text-right">{product.price} kr</TableCell>
-                  <TableCell className="text-right">
-                    <Input
-                      type="number"
-                      defaultValue={product.cogs}
-                      className="w-24 text-right ml-auto"
-                    />
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Badge
-                      variant={product.margin > 70 ? 'default' : product.margin > 50 ? 'secondary' : 'destructive'}
-                    >
-                      {product.margin.toFixed(1)}%
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right">{product.stock}</TableCell>
-                  <TableCell className="text-right font-medium">
-                    {(product.cogs * product.stock).toLocaleString('sv-SE')} kr
-                  </TableCell>
+          {filteredProducts.length === 0 ? (
+            <div className="text-center py-12">
+              <Package className="h-12 w-12 text-slate-300 mx-auto mb-4" />
+              <p className="text-slate-500">No products found. Sync your store to import products.</p>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Product</TableHead>
+                  <TableHead>SKU</TableHead>
+                  <TableHead className="text-right">Price</TableHead>
+                  <TableHead className="text-right">COGS</TableHead>
+                  <TableHead>VAT Rate</TableHead>
+                  <TableHead className="text-right">Margin</TableHead>
+                  <TableHead className="text-right">Stock</TableHead>
+                  <TableHead className="text-right">Inventory Value</TableHead>
+                  <TableHead></TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {filteredProducts.map((product) => {
+                  const changes = pendingChanges.get(product.variantId)
+                  const currentCogs = changes?.cogs ?? product.cogs?.costPrice ?? 0
+                  const currentVat = changes?.vatRate ?? product.vatRate ?? 25
+                  const margin = getMargin(Number(product.price), currentCogs)
+                  const hasChanges = !!changes
+
+                  return (
+                    <TableRow key={product.variantId}>
+                      <TableCell className="font-medium">
+                        <div>
+                          {product.productTitle}
+                          {product.variantTitle && product.variantTitle !== 'Default Title' && (
+                            <span className="text-slate-500 text-sm ml-1">
+                              - {product.variantTitle}
+                            </span>
+                          )}
+                        </div>
+                        {product.cogs?.source === 'SHOPIFY_COST' && (
+                          <Badge variant="outline" className="text-xs mt-1">
+                            From Shopify
+                          </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {product.sku && <Badge variant="outline">{product.sku}</Badge>}
+                      </TableCell>
+                      <TableCell className="text-right">{Number(product.price).toFixed(0)} kr</TableCell>
+                      <TableCell className="text-right">
+                        <Input
+                          type="number"
+                          value={currentCogs}
+                          onChange={(e) => handleCogsChange(product.variantId, e.target.value)}
+                          className="w-24 text-right ml-auto"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Select
+                          value={currentVat.toString()}
+                          onValueChange={(value) => handleVatChange(product.variantId, value)}
+                        >
+                          <SelectTrigger className="w-36">
+                            <SelectValue placeholder="Select VAT" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {VAT_RATES.map(rate => (
+                              <SelectItem key={rate.value} value={rate.value}>
+                                {rate.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Badge
+                          variant={margin > 70 ? 'default' : margin > 50 ? 'secondary' : 'destructive'}
+                        >
+                          {margin.toFixed(1)}%
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">{product.inventoryQuantity}</TableCell>
+                      <TableCell className="text-right font-medium">
+                        {(currentCogs * product.inventoryQuantity).toLocaleString('sv-SE')} kr
+                      </TableCell>
+                      <TableCell>
+                        {hasChanges && (
+                          <Button
+                            size="sm"
+                            onClick={() => saveChanges(product.variantId)}
+                            disabled={saving === product.variantId}
+                          >
+                            {saving === product.variantId ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <Save className="w-4 h-4" />
+                            )}
+                          </Button>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
     </div>

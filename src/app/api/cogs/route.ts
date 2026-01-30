@@ -71,6 +71,7 @@ export async function GET(request: NextRequest) {
     store: v.product.store,
     cogs: v.cogsEntries[0] || null,
     hasCogs: v.cogsEntries.length > 0,
+    vatRate: v.vatRate, // VAT rate per product (25%, 12%, 6%, 0%)
   }))
 
   return NextResponse.json(result)
@@ -85,7 +86,7 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json()
-  const { variantId, cost, zoneId, notes } = body
+  const { variantId, cost, zoneId, notes, vatRate } = body
 
   if (!variantId || cost === undefined) {
     return NextResponse.json({ error: 'variantId and cost are required' }, { status: 400 })
@@ -114,6 +115,14 @@ export async function POST(request: NextRequest) {
   }
 
   const now = new Date()
+
+  // Update VAT rate if provided
+  if (vatRate !== undefined) {
+    await prisma.productVariant.update({
+      where: { id: variantId },
+      data: { vatRate: parseFloat(vatRate) },
+    })
+  }
 
   // Set end date on previous active COGS entries
   await prisma.variantCOGS.updateMany({
