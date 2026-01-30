@@ -5,12 +5,10 @@ import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import {
   LayoutDashboard,
-  ShoppingCart,
   Package,
   DollarSign,
   Receipt,
   FileText,
-  Landmark,
   Megaphone,
   Settings,
   ChevronLeft,
@@ -24,7 +22,6 @@ import { Button } from '@/components/ui/button'
 
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-  { name: 'Orders', href: '/orders', icon: ShoppingCart },
   { name: 'Products', href: '/products', icon: Package },
   { name: 'COGS', href: '/cogs', icon: DollarSign },
   { name: 'Expenses', href: '/expenses', icon: Receipt },
