@@ -96,37 +96,58 @@ export async function GET(request: NextRequest) {
 
     // Exchange code for access token
     const shopDomain = shop.includes('.myshopify.com') ? shop : `${shop}.myshopify.com`
-    const tokenResponse = await fetch(`https://${shopDomain}/admin/oauth/access_token`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        client_id: SHOPIFY_API_KEY,
-        client_secret: SHOPIFY_API_SECRET,
-        code,
-      }),
-    })
 
-    if (!tokenResponse.ok) {
-      console.error('Failed to get access token:', await tokenResponse.text())
-      return NextResponse.redirect(new URL('/settings/stores?error=token_failed', APP_URL))
+    let tokenResponse
+    let access_token: string
+    let scope: string
+
+    try {
+      tokenResponse = await fetch(`https://${shopDomain}/admin/oauth/access_token`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          client_id: SHOPIFY_API_KEY,
+          client_secret: SHOPIFY_API_SECRET,
+          code,
+        }),
+      })
+
+      if (!tokenResponse.ok) {
+        const errorText = await tokenResponse.text()
+        console.error('Failed to get access token:', errorText)
+        return NextResponse.redirect(new URL('/settings/stores?error=token_failed', APP_URL))
+      }
+
+      const tokenData = await tokenResponse.json()
+      access_token = tokenData.access_token
+      scope = tokenData.scope
+    } catch (fetchError) {
+      console.error('Fetch error during token exchange:', fetchError)
+      return NextResponse.redirect(new URL('/settings/stores?error=connection_failed', APP_URL))
     }
-
-    const { access_token, scope } = await tokenResponse.json()
 
     // Get shop info
-    const shopResponse = await fetch(`https://${shopDomain}/admin/api/2024-01/shop.json`, {
-      headers: {
-        'X-Shopify-Access-Token': access_token,
-      },
-    })
+    let shopInfo
+    try {
+      const shopResponse = await fetch(`https://${shopDomain}/admin/api/2024-10/shop.json`, {
+        headers: {
+          'X-Shopify-Access-Token': access_token,
+        },
+      })
 
-    if (!shopResponse.ok) {
-      return NextResponse.redirect(new URL('/settings/stores?error=shop_info_failed', APP_URL))
+      if (!shopResponse.ok) {
+        console.error('Failed to get shop info:', await shopResponse.text())
+        return NextResponse.redirect(new URL('/settings/stores?error=shop_info_failed', APP_URL))
+      }
+
+      const shopData = await shopResponse.json()
+      shopInfo = shopData.shop
+    } catch (fetchError) {
+      console.error('Fetch error during shop info:', fetchError)
+      return NextResponse.redirect(new URL('/settings/stores?error=connection_failed', APP_URL))
     }
-
-    const { shop: shopInfo } = await shopResponse.json()
 
     // Get user's team
     const teamMember = await prisma.teamMember.findFirst({
