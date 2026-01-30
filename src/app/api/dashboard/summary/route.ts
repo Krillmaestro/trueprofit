@@ -306,12 +306,18 @@ export async function GET(request: NextRequest) {
 
   // Include shipping cost if configured with tiers, otherwise not included
   // User can configure shipping cost tiers in Settings > Shipping Costs
-  const totalCosts = totalCOGS + totalFees + fixedCosts + variableCosts + salaries + oneTimeCosts + totalAdSpend + totalShippingCost
-  const netProfit = netRevenue - totalCosts
+  // Include VAT as a cost since it goes to Skatteverket (not money we keep)
+  const totalCostsWithoutVat = totalCOGS + totalFees + fixedCosts + variableCosts + salaries + oneTimeCosts + totalAdSpend + totalShippingCost
+  const totalCosts = totalCostsWithoutVat + totalTax  // VAT is a cost!
 
-  // Margins calculated on revenue excluding VAT (netRevenue)
-  const profitMargin = netRevenue > 0 ? (netProfit / netRevenue) * 100 : 0
-  const grossMargin = netRevenue > 0 ? (grossProfit / netRevenue) * 100 : 0
+  // Net profit: Gross revenue minus ALL costs (including VAT)
+  // This shows the actual money left after everything
+  const netProfit = grossRevenue - totalRefunds - totalDiscounts - totalCosts
+
+  // Margins calculated on gross revenue (since we now show VAT as a cost)
+  const effectiveRevenue = grossRevenue - totalRefunds - totalDiscounts
+  const profitMargin = effectiveRevenue > 0 ? (netProfit / effectiveRevenue) * 100 : 0
+  const grossMargin = effectiveRevenue > 0 ? ((effectiveRevenue - totalCOGS) / effectiveRevenue) * 100 : 0
   const roas = totalAdSpend > 0 ? adRevenue / totalAdSpend : 0
 
   // Break-Even ROAS calculation
@@ -428,8 +434,8 @@ export async function GET(request: NextRequest) {
           variable: variableCosts,
           salaries,
           oneTime: oneTimeCosts,
-          total: totalCosts,
-          totalWithVat: totalCosts + totalTax,  // Total including VAT
+          total: totalCosts,  // Now includes VAT
+          totalWithoutVat: totalCostsWithoutVat,  // Costs excluding VAT (for some calculations)
         },
         profit: {
           gross: grossProfit,
