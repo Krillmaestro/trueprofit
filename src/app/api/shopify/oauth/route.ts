@@ -95,7 +95,8 @@ export async function GET(request: NextRequest) {
     }
 
     // Exchange code for access token
-    const tokenResponse = await fetch(`https://${shop}.myshopify.com/admin/oauth/access_token`, {
+    const shopDomain = shop.includes('.myshopify.com') ? shop : `${shop}.myshopify.com`
+    const tokenResponse = await fetch(`https://${shopDomain}/admin/oauth/access_token`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -115,7 +116,7 @@ export async function GET(request: NextRequest) {
     const { access_token, scope } = await tokenResponse.json()
 
     // Get shop info
-    const shopResponse = await fetch(`https://${shop}.myshopify.com/admin/api/2024-01/shop.json`, {
+    const shopResponse = await fetch(`https://${shopDomain}/admin/api/2024-01/shop.json`, {
       headers: {
         'X-Shopify-Access-Token': access_token,
       },
@@ -142,11 +143,11 @@ export async function GET(request: NextRequest) {
 
     await prisma.store.upsert({
       where: {
-        shopifyDomain: shop,
+        shopifyDomain: shopDomain,
       },
       create: {
         teamId: teamMember.teamId,
-        shopifyDomain: shop,
+        shopifyDomain: shopDomain,
         shopifyAccessTokenEncrypted: encryptedToken,
         shopifyScopes: scope.split(','),
         name: shopInfo.name,
