@@ -183,6 +183,17 @@ const demoTopProducts = [
   { id: '5', name: 'Socks 3-Pack', sku: 'SOC-MIX-003', revenue: 28400, profit: 17600, margin: 62.0, orders: 312, trend: 'up' as const },
 ]
 
+interface TopProduct {
+  id: string
+  name: string
+  sku: string
+  revenue: number
+  profit: number
+  margin: number
+  orders: number
+  trend: 'up' | 'down' | 'stable'
+}
+
 // Generate trend data for sparklines
 const generateTrendData = (base: number, variance: number, length: number) => {
   const data = []
@@ -203,6 +214,8 @@ export default function DashboardPage() {
   const [isUsingDemoData, setIsUsingDemoData] = useState(false)
   const [comparisonEnabled, setComparisonEnabled] = useState(false)
   const [previousData, setPreviousData] = useState<DashboardData | null>(null)
+  const [topProducts, setTopProducts] = useState<TopProduct[]>([])
+  const [topProductsLoading, setTopProductsLoading] = useState(true)
 
   const fetchDashboardData = useCallback(async () => {
     setLoading(true)
@@ -246,6 +259,40 @@ export default function DashboardPage() {
   useEffect(() => {
     fetchDashboardData()
   }, [fetchDashboardData])
+
+  // Fetch top products
+  useEffect(() => {
+    const fetchTopProducts = async () => {
+      setTopProductsLoading(true)
+      try {
+        const params = new URLSearchParams()
+        if (dateRange.startDate) {
+          params.set('startDate', dateRange.startDate.toISOString())
+        }
+        if (dateRange.endDate) {
+          params.set('endDate', dateRange.endDate.toISOString())
+        }
+
+        const response = await fetch(`/api/dashboard/top-products?${params.toString()}`)
+        if (response.ok) {
+          const result = await response.json()
+          if (result.products && result.products.length > 0) {
+            setTopProducts(result.products)
+          } else {
+            setTopProducts(demoTopProducts)
+          }
+        } else {
+          setTopProducts(demoTopProducts)
+        }
+      } catch {
+        setTopProducts(demoTopProducts)
+      } finally {
+        setTopProductsLoading(false)
+      }
+    }
+
+    fetchTopProducts()
+  }, [dateRange])
 
   // Fetch comparison period data when enabled
   useEffect(() => {
@@ -473,7 +520,7 @@ export default function DashboardPage() {
         />
 
         {/* Top Products */}
-        <TopProductsCard products={demoTopProducts} loading={loading} />
+        <TopProductsCard products={topProducts.length > 0 ? topProducts : demoTopProducts} loading={topProductsLoading} />
       </div>
 
       {/* Analytics Row */}
@@ -491,10 +538,10 @@ export default function DashboardPage() {
 
         {/* Industry Benchmark */}
         <BenchmarkCard
-          industry="fashion"
+          industry="general"
           margin={displayData.summary.margin}
           cogsPercent={displayData.summary.revenue > 0 ? (displayData.breakdown.costs.cogs / displayData.summary.revenue) * 100 : 0}
-          shippingPercent={displayData.summary.revenue > 0 ? (displayData.breakdown.costs.shipping / displayData.summary.revenue) * 100 : 0}
+          shippingPercent={displayData.breakdown.revenue?.shipping && displayData.summary.revenue > 0 ? (displayData.breakdown.revenue.shipping / displayData.summary.revenue) * 100 : 0}
         />
       </div>
 

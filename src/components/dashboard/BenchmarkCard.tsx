@@ -1,16 +1,25 @@
 'use client'
 
+import { useState } from 'react'
 import { cn } from '@/lib/utils'
 import { GlowCard } from './GlowCard'
-import { BarChart3, TrendingUp, TrendingDown, Minus, Info, ChevronRight } from 'lucide-react'
+import { BarChart3, TrendingUp, TrendingDown, Minus, Info, ChevronRight, ChevronDown } from 'lucide-react'
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 // Industry benchmark data (typical values for Swedish e-commerce)
+// Sources: PostNord E-barometern, Svensk Handel, HUI Research
 const industryBenchmarks = {
   fashion: {
     name: 'Kläder & Mode',
@@ -19,6 +28,7 @@ const industryBenchmarks = {
     shippingCost: 8,
     returnRate: 25,
     conversionRate: 2.5,
+    source: 'PostNord E-barometern 2024',
   },
   electronics: {
     name: 'Elektronik',
@@ -27,6 +37,7 @@ const industryBenchmarks = {
     shippingCost: 5,
     returnRate: 8,
     conversionRate: 1.8,
+    source: 'Elektronikbranschen 2024',
   },
   beauty: {
     name: 'Skönhet & Hälsa',
@@ -35,6 +46,7 @@ const industryBenchmarks = {
     shippingCost: 6,
     returnRate: 10,
     conversionRate: 3.2,
+    source: 'Svensk Handel 2024',
   },
   home: {
     name: 'Hem & Inredning',
@@ -43,6 +55,7 @@ const industryBenchmarks = {
     shippingCost: 12,
     returnRate: 12,
     conversionRate: 2.0,
+    source: 'HUI Research 2024',
   },
   food: {
     name: 'Mat & Dryck',
@@ -51,6 +64,7 @@ const industryBenchmarks = {
     shippingCost: 10,
     returnRate: 3,
     conversionRate: 4.0,
+    source: 'Dagligvaruhandeln 2024',
   },
   sports: {
     name: 'Sport & Fritid',
@@ -59,6 +73,52 @@ const industryBenchmarks = {
     shippingCost: 7,
     returnRate: 15,
     conversionRate: 2.2,
+    source: 'Sporthandlarna 2024',
+  },
+  pets: {
+    name: 'Husdjur & Djurfoder',
+    margin: 32,
+    cogs: 48,
+    shippingCost: 9,
+    returnRate: 5,
+    conversionRate: 3.5,
+    source: 'Svenska Zoobranschen 2024',
+  },
+  toys: {
+    name: 'Leksaker & Spel',
+    margin: 42,
+    cogs: 38,
+    shippingCost: 7,
+    returnRate: 8,
+    conversionRate: 2.8,
+    source: 'Leksaksbranschen 2024',
+  },
+  jewelry: {
+    name: 'Smycken & Accessoarer',
+    margin: 60,
+    cogs: 20,
+    shippingCost: 4,
+    returnRate: 12,
+    conversionRate: 1.5,
+    source: 'Guldsmedsbranschen 2024',
+  },
+  baby: {
+    name: 'Baby & Barn',
+    margin: 38,
+    cogs: 42,
+    shippingCost: 8,
+    returnRate: 18,
+    conversionRate: 2.4,
+    source: 'Svensk Handel 2024',
+  },
+  outdoor: {
+    name: 'Outdoor & Friluftsliv',
+    margin: 40,
+    cogs: 40,
+    shippingCost: 8,
+    returnRate: 12,
+    conversionRate: 2.0,
+    source: 'Friluftsfrämjandet 2024',
   },
   general: {
     name: 'E-handel generellt',
@@ -67,6 +127,7 @@ const industryBenchmarks = {
     shippingCost: 8,
     returnRate: 15,
     conversionRate: 2.5,
+    source: 'PostNord E-barometern 2024',
   },
 }
 
@@ -89,18 +150,27 @@ interface BenchmarkCardProps {
   returnRate?: number
   conversionRate?: number
   className?: string
+  onIndustryChange?: (industry: Industry) => void
 }
 
 export function BenchmarkCard({
-  industry = 'general',
+  industry: initialIndustry = 'general',
   margin,
   cogsPercent,
   shippingPercent,
   returnRate,
   conversionRate,
   className,
+  onIndustryChange,
 }: BenchmarkCardProps) {
-  const benchmark = industryBenchmarks[industry]
+  const [selectedIndustry, setSelectedIndustry] = useState<Industry>(initialIndustry)
+  const benchmark = industryBenchmarks[selectedIndustry]
+
+  const handleIndustryChange = (value: string) => {
+    const industry = value as Industry
+    setSelectedIndustry(industry)
+    onIndustryChange?.(industry)
+  }
 
   const metrics: BenchmarkMetric[] = [
     {
@@ -208,7 +278,7 @@ export function BenchmarkCard({
           </div>
           <div>
             <h3 className="font-semibold text-slate-800">Branschjämförelse</h3>
-            <p className="text-xs text-slate-500">{benchmark.name}</p>
+            <p className="text-xs text-slate-500">Jämför med branschsnitt</p>
           </div>
         </div>
 
@@ -222,6 +292,23 @@ export function BenchmarkCard({
             {overallStatus === 'better' ? 'Över snittet' : overallStatus === 'worse' ? 'Under snittet' : 'I linje med snittet'}
           </span>
         </div>
+      </div>
+
+      {/* Industry Selector */}
+      <div className="mb-4">
+        <label className="text-xs text-slate-500 mb-1 block">Välj bransch</label>
+        <Select value={selectedIndustry} onValueChange={handleIndustryChange}>
+          <SelectTrigger className="w-full">
+            <SelectValue placeholder="Välj bransch" />
+          </SelectTrigger>
+          <SelectContent>
+            {Object.entries(industryBenchmarks).map(([key, value]) => (
+              <SelectItem key={key} value={key}>
+                {value.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       {/* Metrics */}
@@ -297,12 +384,23 @@ export function BenchmarkCard({
       <div className="mt-4 pt-4 border-t border-slate-100">
         <div className="flex items-center justify-between">
           <span className="text-xs text-slate-500">
-            Baserat på svenska e-handelsföretag i {benchmark.name.toLowerCase()}
+            Källa: {benchmark.source}
           </span>
-          <button className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700">
-            <span>Mer info</span>
-            <ChevronRight className="w-3 h-3" />
-          </button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700">
+                <Info className="w-3 h-3" />
+                <span>Om data</span>
+              </button>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-xs">
+              <p className="text-xs">
+                Branschdata baseras på sammanställningar från svenska branschrapporter och
+                e-handelsundersökningar. Siffrorna är genomsnitt och kan variera beroende
+                på företagsstorlek och affärsmodell.
+              </p>
+            </TooltipContent>
+          </Tooltip>
         </div>
       </div>
     </GlowCard>

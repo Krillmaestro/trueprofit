@@ -167,8 +167,9 @@ export async function GET(request: NextRequest) {
       fees = (Number(order.totalPrice) * DEFAULT_FEE_RATE / 100) + DEFAULT_FIXED_FEE
     }
 
-    const shipping = Number(order.totalShippingPrice)
-    const profit = netRevenue - cogs - shipping - fees
+    // Note: Shipping is NOT deducted as a cost - it's part of revenue
+    const shipping = Number(order.totalShippingPrice) // Kept for informational purposes
+    const profit = netRevenue - cogs - fees
     const margin = netRevenue > 0 ? (profit / netRevenue) * 100 : 0
 
     return {

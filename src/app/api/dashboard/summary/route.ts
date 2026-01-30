@@ -172,7 +172,8 @@ export async function GET(request: NextRequest) {
   const revenueAfterRefunds = grossRevenue - totalRefunds
   const revenueExVat = revenueAfterRefunds - totalTax  // Revenue excluding VAT
   const netRevenue = revenueExVat - totalDiscounts  // Net revenue for profit calculation
-  const grossProfit = netRevenue - totalCOGS - totalShipping
+  // Note: Shipping is NOT deducted as a cost - it's part of revenue and handled via COGS if needed
+  const grossProfit = netRevenue - totalCOGS
   const operatingProfit = grossProfit - totalFees
 
   // Calculate days in the selected period
@@ -261,7 +262,8 @@ export async function GET(request: NextRequest) {
   const totalAdSpend = Number(adSpend._sum.spend || 0)
   const adRevenue = Number(adSpend._sum.revenue || 0)
 
-  const totalCosts = totalCOGS + totalShipping + totalFees + fixedCosts + variableCosts + salaries + oneTimeCosts + totalAdSpend
+  // Note: Shipping is NOT included in costs - it's part of revenue (user handles shipping cost via COGS)
+  const totalCosts = totalCOGS + totalFees + fixedCosts + variableCosts + salaries + oneTimeCosts + totalAdSpend
   const netProfit = netRevenue - totalCosts
 
   // Margins calculated on revenue excluding VAT (netRevenue)
@@ -323,9 +325,9 @@ export async function GET(request: NextRequest) {
   const dailyData = Array.from(dailyDataMap.values()).sort((a, b) => a.date.localeCompare(b.date))
 
   // Cost breakdown for pie chart
+  // Note: Shipping is NOT included - it's part of revenue, not a cost
   const costBreakdown = [
     { name: 'COGS', value: totalCOGS, color: '#3b82f6' },
-    { name: 'Shipping', value: totalShipping, color: '#ef4444' },
     { name: 'Payment Fees', value: totalFees, color: '#f59e0b' },
     { name: 'Ad Spend', value: totalAdSpend, color: '#8b5cf6' },
     { name: 'Fixed Costs', value: fixedCosts, color: '#22c55e' },
