@@ -40,17 +40,19 @@ export async function GET(request: NextRequest) {
   // Step 1: Initiate OAuth flow
   if (!code) {
     const redirectUri = `${APP_URL}/api/ads/facebook/oauth`
+    // Note: read_insights is NOT valid for Facebook Login - it's for Pages
+    // For Ads API we only need ads_read and ads_management
     const scopes = [
-      'ads_read',
-      'ads_management',
-      'business_management',
-      'read_insights',
+      'ads_read',           // Read ad performance data
+      'ads_management',     // Create, manage, delete campaigns
+      'business_management', // Access Business Manager accounts
     ].join(',')
 
     // Generate and store a secure state token for CSRF protection
     const stateToken = generateStateToken(session.user.id, { provider: 'facebook' })
 
-    const authUrl = new URL('https://www.facebook.com/v19.0/dialog/oauth')
+    // Use latest Graph API version
+    const authUrl = new URL('https://www.facebook.com/v21.0/dialog/oauth')
     authUrl.searchParams.set('client_id', FACEBOOK_APP_ID)
     authUrl.searchParams.set('redirect_uri', redirectUri)
     authUrl.searchParams.set('scope', scopes)
@@ -77,7 +79,7 @@ export async function GET(request: NextRequest) {
     const redirectUri = `${APP_URL}/api/ads/facebook/oauth`
 
     // Exchange code for short-lived token
-    const tokenUrl = new URL('https://graph.facebook.com/v19.0/oauth/access_token')
+    const tokenUrl = new URL('https://graph.facebook.com/v21.0/oauth/access_token')
     tokenUrl.searchParams.set('client_id', FACEBOOK_APP_ID)
     tokenUrl.searchParams.set('client_secret', FACEBOOK_APP_SECRET)
     tokenUrl.searchParams.set('redirect_uri', redirectUri)

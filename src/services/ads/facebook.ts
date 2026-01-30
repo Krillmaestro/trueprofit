@@ -1,7 +1,7 @@
 // Facebook Marketing API Client
 // Documentation: https://developers.facebook.com/docs/marketing-api
 
-const FACEBOOK_API_VERSION = 'v19.0'
+const FACEBOOK_API_VERSION = 'v21.0'
 const FACEBOOK_GRAPH_URL = `https://graph.facebook.com/${FACEBOOK_API_VERSION}`
 
 export interface FacebookAdAccount {
