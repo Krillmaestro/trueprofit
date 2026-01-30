@@ -13,42 +13,44 @@ import {
 
 interface BreakEvenRoasCardProps {
   revenue: number       // Gross revenue (inkl VAT)
-  revenueExVat?: number // Revenue excluding VAT (if available)
-  vat?: number          // VAT amount
+  totalCosts: number    // All costs including VAT
+  margin: number        // Current profit margin (%)
   adSpend: number
   adRevenue: number
-  cogs: number
-  fees: number
-  shippingCost: number
   className?: string
 }
 
 export function BreakEvenRoasCard({
   revenue,
-  revenueExVat,
-  vat,
+  totalCosts,
+  margin,
   adSpend,
   adRevenue,
-  cogs,
-  fees,
-  shippingCost,
   className,
 }: BreakEvenRoasCardProps) {
   const analysis = useMemo(() => {
-    // Använd revenue exkl VAT för korrekt break-even beräkning
-    // VAT är inte en kostnad vi behåller - den går till staten
-    const netRevenue = revenueExVat ?? (vat ? revenue - vat : revenue * 0.8)  // Fallback: anta 20% VAT (25% moms)
+    // Break-Even ROAS beräknas baserat på faktisk vinstmarginal
+    //
+    // Logik: Om du har 20% marginal, så går 80% av varje intäktskrona till kostnader.
+    // För att annonsering ska vara lönsam måste:
+    //   Ad Revenue > Ad Spend + (Ad Revenue × Cost Ratio)
+    //
+    // Omskrivning:
+    //   Ad Revenue × (1 - Cost Ratio) > Ad Spend
+    //   Ad Revenue × Margin Ratio > Ad Spend
+    //   Ad Revenue / Ad Spend > 1 / Margin Ratio
+    //
+    // Break-Even ROAS = 1 / (Margin Ratio) = 1 / (margin / 100)
+    //
+    // Exempel: Med 20% marginal → Break-Even ROAS = 1 / 0.20 = 5.0x
+    // Exempel: Med 50% marginal → Break-Even ROAS = 1 / 0.50 = 2.0x
 
-    // Beräkna variabla kostnader som procent av revenue (exkl VAT)
-    const variableCosts = cogs + fees + shippingCost
-    const variableCostRatio = netRevenue > 0 ? variableCosts / netRevenue : 0
+    const marginRatio = margin / 100
+    const costRatio = 1 - marginRatio
 
-    // Break-Even ROAS formel:
-    // För att gå plus måste: Ad Revenue > Ad Spend + (Ad Revenue × Variable Cost Ratio)
-    // Omskrivning: Ad Revenue × (1 - Variable Cost Ratio) > Ad Spend
-    // Break-Even ROAS = 1 / (1 - Variable Cost Ratio)
-    const contributionMarginRatio = 1 - variableCostRatio
-    const breakEvenRoas = contributionMarginRatio > 0 ? 1 / contributionMarginRatio : 999
+    // Break-Even ROAS = 1 / marginRatio
+    // Om marginRatio är 0 eller negativ, sätt ett högt värde
+    const breakEvenRoas = marginRatio > 0 ? 1 / marginRatio : 99
 
     // Nuvarande ROAS
     const currentRoas = adSpend > 0 ? adRevenue / adSpend : 0
@@ -59,7 +61,8 @@ export function BreakEvenRoasCard({
     const roasMarginPercent = breakEvenRoas > 0 ? ((currentRoas - breakEvenRoas) / breakEvenRoas) * 100 : 0
 
     // Beräkna profit/förlust från ads
-    const adProfit = adRevenue - adSpend - (adRevenue * variableCostRatio)
+    // Ad Profit = Ad Revenue × Margin Ratio - Ad Spend
+    const adProfit = (adRevenue * marginRatio) - adSpend
 
     return {
       currentRoas,
@@ -68,10 +71,10 @@ export function BreakEvenRoasCard({
       roasDifference,
       roasMarginPercent,
       adProfit,
-      variableCostRatio,
-      contributionMarginRatio,
+      costRatio,
+      marginRatio,
     }
-  }, [revenue, revenueExVat, vat, adSpend, adRevenue, cogs, fees, shippingCost])
+  }, [margin, adSpend, adRevenue])
 
   const formatRoas = (value: number) => {
     if (value >= 100) return '99+'

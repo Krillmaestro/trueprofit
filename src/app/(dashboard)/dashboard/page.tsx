@@ -448,13 +448,10 @@ export default function DashboardPage() {
         {/* Break-Even ROAS Hero */}
         <BreakEvenRoasCard
           revenue={displayData.summary.revenue}
-          revenueExVat={displayData.summary.revenueExVat}
-          vat={displayData.summary.tax || displayData.breakdown.revenue.tax}
+          totalCosts={displayData.breakdown.costs.total}
+          margin={displayData.summary.margin}
           adSpend={displayData.ads.spend}
           adRevenue={displayData.ads.revenue}
-          cogs={displayData.breakdown.costs.cogs}
-          fees={displayData.breakdown.costs.fees}
-          shippingCost={displayData.breakdown.costs.shippingCost || displayData.breakdown.costs.shipping}
         />
       </div>
 
