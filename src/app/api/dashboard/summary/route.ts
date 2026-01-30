@@ -368,8 +368,9 @@ export async function GET(request: NextRequest) {
   const dailyData = Array.from(dailyDataMap.values()).sort((a, b) => a.date.localeCompare(b.date))
 
   // Cost breakdown for pie chart
-  // Shipping cost included if tiers are configured
+  // Shows where the money goes - including VAT (which goes to Skatteverket)
   const costBreakdown = [
+    { name: 'Moms (VAT)', value: totalTax, color: '#dc2626' },  // Red for tax
     { name: 'COGS', value: totalCOGS, color: '#3b82f6' },
     { name: 'Shipping', value: totalShippingCost, color: '#ec4899' },
     { name: 'Payment Fees', value: totalFees, color: '#f59e0b' },
@@ -409,6 +410,7 @@ export async function GET(request: NextRequest) {
       breakdown: {
         revenue: revenueBreakdown,
         costs: {
+          vat: totalTax,  // Moms - goes to Skatteverket
           cogs: totalCOGS,
           shippingRevenue: totalShipping,  // What customer paid for shipping
           shippingCost: totalShippingCost,  // Our actual shipping cost
@@ -419,6 +421,7 @@ export async function GET(request: NextRequest) {
           salaries,
           oneTime: oneTimeCosts,
           total: totalCosts,
+          totalWithVat: totalCosts + totalTax,  // Total including VAT
         },
         profit: {
           gross: grossProfit,

@@ -23,6 +23,7 @@ import {
   Wallet,
   Target,
   AlertTriangle,
+  Receipt,
 } from 'lucide-react'
 
 interface DashboardData {
@@ -49,6 +50,7 @@ interface DashboardData {
       net: number
     }
     costs: {
+      vat?: number
       cogs: number
       shipping: number
       fees: number
@@ -59,6 +61,7 @@ interface DashboardData {
       recurring: number
       oneTime: number
       total: number
+      totalWithVat?: number
     }
     profit: {
       gross: number
@@ -152,6 +155,7 @@ const demoData: DashboardData = {
       { date: '2025-01-28', revenue: 23100, shipping: 2205, tax: 4620, discounts: 1000, refunds: 0, orders: 63 },
     ],
     costBreakdown: [
+      { name: 'Moms (VAT)', value: 99000, color: '#dc2626' },
       { name: 'COGS', value: 145000, color: '#3b82f6' },
       { name: 'Ad Spend', value: 52000, color: '#8b5cf6' },
       { name: 'Shipping', value: 42000, color: '#f43f5e' },
@@ -450,7 +454,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Secondary KPIs */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <StatCard
           title="Orders"
           value={displayData.summary.orders}
@@ -468,6 +472,16 @@ export default function DashboardPage() {
           icon={Package}
           iconBgColor="bg-cyan-50"
           iconColor="text-cyan-600"
+          loading={loading}
+          compact
+        />
+        <StatCard
+          title="Moms (VAT)"
+          value={displayData.summary.tax || displayData.breakdown.revenue.tax || 0}
+          suffix=" kr"
+          icon={Receipt}
+          iconBgColor="bg-red-50"
+          iconColor="text-red-600"
           loading={loading}
           compact
         />
