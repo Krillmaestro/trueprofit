@@ -6,6 +6,12 @@ import { decrypt } from '@/lib/encryption'
 import { ShopifyClient } from '@/services/shopify/client'
 import { syncRateLimiter, getRateLimitKey, getRateLimitHeaders } from '@/lib/rate-limit'
 
+// Shopify allows 2 requests per second - we'll be conservative with 600ms delay
+const SHOPIFY_API_DELAY_MS = 600
+
+// Helper to delay between API calls to avoid rate limiting
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+
 export async function POST(request: NextRequest) {
   const session = await getServerSession(authOptions)
 
@@ -293,6 +299,8 @@ async function syncOrders(storeId: string, client: ShopifyClient): Promise<{ ord
       }
 
       // Sync transactions for payment fee calculation
+      // Add delay to avoid Shopify rate limiting (2 calls/second)
+      await delay(SHOPIFY_API_DELAY_MS)
       try {
         const { transactions } = await client.getTransactions(orderData.id.toString())
         for (const tx of transactions) {
