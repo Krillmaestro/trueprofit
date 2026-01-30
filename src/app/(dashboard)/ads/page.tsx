@@ -123,6 +123,8 @@ function AdsPageContent() {
       setNotification({ type: 'success', message: 'Facebook Ads account connected successfully!' })
     } else if (success === 'google_connected') {
       setNotification({ type: 'success', message: 'Google Ads account connected successfully!' })
+    } else if (success === 'google_sheets_connected') {
+      setNotification({ type: 'success', message: 'Google Ads (via Sheets) connected successfully!' })
     } else if (error) {
       const errorMessages: Record<string, string> = {
         facebook_oauth_denied: 'Facebook authorization was denied',
@@ -206,12 +208,14 @@ function AdsPageContent() {
     }
   }
 
-  const connectPlatform = (platform: 'facebook' | 'google' | 'tiktok') => {
+  const connectPlatform = (platform: 'facebook' | 'google' | 'google_sheets' | 'tiktok') => {
     setDialogOpen(false)
     if (platform === 'facebook') {
       window.location.href = '/api/ads/facebook/oauth'
     } else if (platform === 'google') {
       window.location.href = '/api/ads/google/oauth'
+    } else if (platform === 'google_sheets') {
+      window.location.href = '/api/ads/google-sheets/oauth'
     } else {
       setNotification({ type: 'error', message: 'TikTok integration coming soon!' })
       setTimeout(() => setNotification(null), 3000)
@@ -296,6 +300,21 @@ function AdsPageContent() {
               <Button
                 variant="outline"
                 className="justify-start h-16"
+                onClick={() => connectPlatform('google_sheets')}
+              >
+                <div className="flex items-center gap-4">
+                  <div className="p-2 bg-white border rounded-lg">
+                    <GoogleIcon />
+                  </div>
+                  <div className="text-left">
+                    <p className="font-medium">Google Ads (via Sheets)</p>
+                    <p className="text-sm text-slate-500">Enkel setup utan Developer Token</p>
+                  </div>
+                </div>
+              </Button>
+              <Button
+                variant="outline"
+                className="justify-start h-16 opacity-50"
                 onClick={() => connectPlatform('google')}
               >
                 <div className="flex items-center gap-4">
@@ -303,8 +322,8 @@ function AdsPageContent() {
                     <GoogleIcon />
                   </div>
                   <div className="text-left">
-                    <p className="font-medium">Google Ads</p>
-                    <p className="text-sm text-slate-500">Connect via Google Ads API</p>
+                    <p className="font-medium">Google Ads (API)</p>
+                    <p className="text-sm text-slate-500">Kräver Developer Token (MCC)</p>
                   </div>
                 </div>
               </Button>

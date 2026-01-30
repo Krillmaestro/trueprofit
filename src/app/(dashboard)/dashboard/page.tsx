@@ -9,6 +9,7 @@ import { ProfitMeter } from '@/components/dashboard/ProfitMeter'
 import { OnboardingProgress, defaultOnboardingSteps } from '@/components/dashboard/OnboardingProgress'
 import { DateRangePicker, getDefaultDateRange } from '@/components/dashboard/DateRangePicker'
 import { QuickActions } from '@/components/dashboard/QuickActions'
+import { SyncButton } from '@/components/dashboard/SyncButton'
 import { GlowCard } from '@/components/dashboard/GlowCard'
 import { ComparisonToggle, ComparisonSummary, getPreviousPeriod } from '@/components/dashboard/ComparisonToggle'
 import { BreakEvenCard } from '@/components/dashboard/BreakEvenCard'
@@ -365,6 +366,11 @@ export default function DashboardPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <SyncButton
+            onSyncComplete={fetchDashboardData}
+            dateFrom={dateRange.startDate.toISOString().split('T')[0]}
+            dateTo={dateRange.endDate.toISOString().split('T')[0]}
+          />
           <ComparisonToggle enabled={comparisonEnabled} onToggle={setComparisonEnabled} />
           <DateRangePicker value={dateRange} onChange={setDateRange} />
         </div>
