@@ -225,7 +225,7 @@ async function handleProductWebhook(storeId: string, productData: Record<string,
         barcode: variant.barcode,
         price: parseFloat(variant.price || '0'),
         compareAtPrice: variant.compare_at_price ? parseFloat(variant.compare_at_price) : null,
-        inventoryQuantity: variant.inventory_quantity || 0,
+        inventoryQuantity: Math.max(0, variant.inventory_quantity || 0), // Never allow negative inventory
         weight: variant.weight,
         weightUnit: variant.weight_unit,
       },
@@ -235,7 +235,7 @@ async function handleProductWebhook(storeId: string, productData: Record<string,
         barcode: variant.barcode,
         price: parseFloat(variant.price || '0'),
         compareAtPrice: variant.compare_at_price ? parseFloat(variant.compare_at_price) : null,
-        inventoryQuantity: variant.inventory_quantity || 0,
+        inventoryQuantity: Math.max(0, variant.inventory_quantity || 0), // Never allow negative inventory
       },
     })
   }

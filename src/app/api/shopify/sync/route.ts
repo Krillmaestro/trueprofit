@@ -309,7 +309,7 @@ async function syncProducts(storeId: string, client: ShopifyClient): Promise<num
             barcode: variant.barcode,
             price: parseFloat(variant.price || '0'),
             compareAtPrice: variant.compare_at_price ? parseFloat(variant.compare_at_price) : null,
-            inventoryQuantity: variant.inventory_quantity || 0,
+            inventoryQuantity: Math.max(0, variant.inventory_quantity || 0), // Never allow negative inventory
             weight: variant.weight,
             weightUnit: variant.weight_unit,
           },
@@ -320,7 +320,7 @@ async function syncProducts(storeId: string, client: ShopifyClient): Promise<num
             inventoryItemId: variant.inventory_item_id ? BigInt(variant.inventory_item_id) : null,
             price: parseFloat(variant.price || '0'),
             compareAtPrice: variant.compare_at_price ? parseFloat(variant.compare_at_price) : null,
-            inventoryQuantity: variant.inventory_quantity || 0,
+            inventoryQuantity: Math.max(0, variant.inventory_quantity || 0), // Never allow negative inventory
           },
         })
 
