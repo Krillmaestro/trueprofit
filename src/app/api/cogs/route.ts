@@ -58,21 +58,27 @@ export async function GET(request: NextRequest) {
     },
   })
 
-  const result = variants.map((v) => ({
-    variantId: v.id,
-    shopifyVariantId: v.shopifyVariantId,
-    productId: v.product.id,
-    productTitle: v.product.title,
-    variantTitle: v.title,
-    sku: v.sku,
-    price: v.price,
-    inventoryQuantity: v.inventoryQuantity,
-    imageUrl: v.product.imageUrl,
-    store: v.product.store,
-    cogs: v.cogsEntries[0] || null,
-    hasCogs: v.cogsEntries.length > 0,
-    vatRate: v.vatRate, // VAT rate per product (25%, 12%, 6%, 0%)
-  }))
+  const result = variants.map((v) => {
+    const cogsEntry = v.cogsEntries[0]
+    return {
+      variantId: v.id,
+      shopifyVariantId: v.shopifyVariantId.toString(), // Convert BigInt to string for JSON
+      productId: v.product.id,
+      productTitle: v.product.title,
+      variantTitle: v.title,
+      sku: v.sku,
+      price: Number(v.price), // Convert Decimal to number
+      inventoryQuantity: v.inventoryQuantity,
+      imageUrl: v.product.imageUrl,
+      store: v.product.store,
+      cogs: cogsEntry ? {
+        costPrice: Number(cogsEntry.costPrice),
+        source: cogsEntry.source,
+      } : null,
+      hasCogs: v.cogsEntries.length > 0,
+      vatRate: Number(v.vatRate), // Convert Decimal to number
+    }
+  })
 
   return NextResponse.json(result)
 }
