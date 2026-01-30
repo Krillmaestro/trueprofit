@@ -23,6 +23,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Search, Download, Package, TrendingUp, DollarSign, Percent, ArrowUpDown, ChevronLeft, ChevronRight, AlertCircle } from 'lucide-react'
+import { EmptyState } from '@/components/EmptyState'
 
 interface Product {
   id: string
@@ -258,11 +259,11 @@ export default function ProductsPage() {
         </CardHeader>
         <CardContent>
           {products.length === 0 ? (
-            <div className="text-center py-12 text-slate-500">
-              <Package className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p className="text-lg font-medium">No products found</p>
-              <p className="text-sm">Connect a store and sync products to see them here</p>
-            </div>
+            <EmptyState
+              type="products"
+              customTitle={searchTerm ? 'Inga produkter hittades' : undefined}
+              customDescription={searchTerm ? `Inga produkter matchar "${searchTerm}". Prova en annan sökning.` : undefined}
+            />
           ) : (
             <>
               <Table>

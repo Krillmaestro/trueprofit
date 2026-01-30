@@ -10,6 +10,9 @@ import { OnboardingProgress, defaultOnboardingSteps } from '@/components/dashboa
 import { DateRangePicker, getDefaultDateRange } from '@/components/dashboard/DateRangePicker'
 import { QuickActions } from '@/components/dashboard/QuickActions'
 import { GlowCard } from '@/components/dashboard/GlowCard'
+import { ComparisonToggle, ComparisonSummary, getPreviousPeriod } from '@/components/dashboard/ComparisonToggle'
+import { BreakEvenCard } from '@/components/dashboard/BreakEvenCard'
+import { BenchmarkCard } from '@/components/dashboard/BenchmarkCard'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
   DollarSign,
@@ -193,6 +196,8 @@ export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isUsingDemoData, setIsUsingDemoData] = useState(false)
+  const [comparisonEnabled, setComparisonEnabled] = useState(false)
+  const [previousData, setPreviousData] = useState<DashboardData | null>(null)
 
   const fetchDashboardData = useCallback(async () => {
     setLoading(true)
@@ -237,8 +242,47 @@ export default function DashboardPage() {
     fetchDashboardData()
   }, [fetchDashboardData])
 
+  // Fetch comparison period data when enabled
+  useEffect(() => {
+    if (!comparisonEnabled) {
+      setPreviousData(null)
+      return
+    }
+
+    const fetchPreviousPeriod = async () => {
+      const previous = getPreviousPeriod(dateRange)
+      try {
+        const params = new URLSearchParams()
+        params.set('startDate', previous.startDate.toISOString())
+        params.set('endDate', previous.endDate.toISOString())
+
+        const response = await fetch(`/api/dashboard/summary?${params.toString()}`)
+        if (response.ok) {
+          const result = await response.json()
+          setPreviousData(result.summary.orders === 0 ? demoData : result)
+        }
+      } catch {
+        // Use demo data for comparison
+        setPreviousData({
+          ...demoData,
+          summary: {
+            ...demoData.summary,
+            revenue: demoData.summary.revenue * 0.85,
+            profit: demoData.summary.profit * 0.78,
+            orders: Math.floor(demoData.summary.orders * 0.9),
+            margin: demoData.summary.margin - 2,
+          },
+        })
+      }
+    }
+
+    fetchPreviousPeriod()
+  }, [comparisonEnabled, dateRange])
+
   // Use data or demo fallback
   const displayData = data || demoData
+  const previousPeriod = getPreviousPeriod(dateRange)
+  const comparisonData = previousData || demoData
 
   // Generate trend data for sparklines
   const revenueTrend = generateTrendData(displayData.summary.revenue, displayData.summary.revenue * 0.05, 14)
@@ -259,12 +303,15 @@ export default function DashboardPage() {
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Profit Dashboard</h1>
+          <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Vinstöversikt</h1>
           <p className="text-slate-500 mt-1">
-            Track your store&apos;s performance in real-time
+            Spåra din butiks prestation i realtid
           </p>
         </div>
-        <DateRangePicker value={dateRange} onChange={setDateRange} />
+        <div className="flex items-center gap-2">
+          <ComparisonToggle enabled={comparisonEnabled} onToggle={setComparisonEnabled} />
+          <DateRangePicker value={dateRange} onChange={setDateRange} />
+        </div>
       </div>
 
       {/* Demo Data Notice */}
@@ -272,9 +319,24 @@ export default function DashboardPage() {
         <Alert className="bg-amber-50 border-amber-200">
           <AlertTriangle className="h-4 w-4 text-amber-600" />
           <AlertDescription className="text-amber-800">
-            {error || 'Showing demo data. Connect your Shopify store to see real metrics.'}
+            {error || 'Visar demodata. Koppla din Shopify-butik för att se riktiga siffror.'}
           </AlertDescription>
         </Alert>
+      )}
+
+      {/* Comparison Summary */}
+      {comparisonEnabled && (
+        <ComparisonSummary
+          currentPeriod={dateRange}
+          previousPeriod={previousPeriod}
+          metrics={{
+            revenue: { current: displayData.summary.revenue, previous: comparisonData.summary.revenue * 0.85 },
+            profit: { current: displayData.summary.profit, previous: comparisonData.summary.profit * 0.78 },
+            orders: { current: displayData.summary.orders, previous: Math.floor(comparisonData.summary.orders * 0.9) },
+            margin: { current: displayData.summary.margin, previous: comparisonData.summary.margin - 2 },
+          }}
+          loading={loading}
+        />
       )}
 
       {/* Data Quality Warning */}
@@ -386,8 +448,8 @@ export default function DashboardPage() {
 
         {/* Profit Meter */}
         <GlowCard className="p-6" glowColor="emerald">
-          <h2 className="text-lg font-semibold text-slate-800 mb-2">Profit Health</h2>
-          <p className="text-sm text-slate-500 mb-4">Your current profitability at a glance</p>
+          <h2 className="text-lg font-semibold text-slate-800 mb-2">Vinsthälsa</h2>
+          <p className="text-sm text-slate-500 mb-4">Din nuvarande lönsamhet i en överblick</p>
           <ProfitMeter
             revenue={displayData.summary.revenue}
             costs={displayData.breakdown.costs.total}
@@ -409,9 +471,31 @@ export default function DashboardPage() {
         <TopProductsCard products={demoTopProducts} loading={loading} />
       </div>
 
+      {/* Analytics Row */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        {/* Break-Even Analysis */}
+        <BreakEvenCard
+          revenue={displayData.summary.revenue}
+          profit={displayData.summary.profit}
+          costs={displayData.breakdown.costs.total}
+          avgOrderValue={displayData.summary.avgOrderValue}
+          avgMargin={displayData.summary.margin}
+          daysInPeriod={Math.ceil((dateRange.endDate.getTime() - dateRange.startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1}
+          daysElapsed={Math.ceil((new Date().getTime() - dateRange.startDate.getTime()) / (1000 * 60 * 60 * 24))}
+        />
+
+        {/* Industry Benchmark */}
+        <BenchmarkCard
+          industry="fashion"
+          margin={displayData.summary.margin}
+          cogsPercent={displayData.summary.grossRevenue > 0 ? (displayData.breakdown.costs.cogs / displayData.summary.grossRevenue) * 100 : 0}
+          shippingPercent={displayData.summary.grossRevenue > 0 ? (displayData.breakdown.costs.shipping / displayData.summary.grossRevenue) * 100 : 0}
+        />
+      </div>
+
       {/* Quick Actions */}
       <div>
-        <h2 className="text-lg font-semibold text-slate-800 mb-3">Quick Actions</h2>
+        <h2 className="text-lg font-semibold text-slate-800 mb-3">Snabbåtgärder</h2>
         <QuickActions />
       </div>
 
@@ -420,27 +504,27 @@ export default function DashboardPage() {
         <div className="flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-6">
             <div className="text-center md:text-left">
-              <div className="text-xs font-medium text-slate-400 uppercase tracking-wider">Period Summary</div>
+              <div className="text-xs font-medium text-slate-400 uppercase tracking-wider">Periodsammanfattning</div>
               <div className="text-sm text-slate-600 mt-1">{dateRange.label}</div>
             </div>
             <div className="h-8 w-px bg-slate-200 hidden md:block" />
             <div className="flex items-center gap-8">
               <div>
-                <div className="text-xs text-slate-400">Revenue</div>
+                <div className="text-xs text-slate-400">Omsättning</div>
                 <div className="text-lg font-bold text-slate-800">
                   {displayData.summary.revenue.toLocaleString('sv-SE')} kr
                 </div>
               </div>
               <div className="text-slate-300 text-2xl">→</div>
               <div>
-                <div className="text-xs text-slate-400">Costs</div>
+                <div className="text-xs text-slate-400">Kostnader</div>
                 <div className="text-lg font-bold text-rose-600">
                   -{displayData.breakdown.costs.total.toLocaleString('sv-SE')} kr
                 </div>
               </div>
               <div className="text-slate-300 text-2xl">=</div>
               <div>
-                <div className="text-xs text-slate-400">Net Profit</div>
+                <div className="text-xs text-slate-400">Nettovinst</div>
                 <div className="text-lg font-bold text-emerald-600">
                   {displayData.summary.profit >= 0 ? '+' : ''}{displayData.summary.profit.toLocaleString('sv-SE')} kr
                 </div>

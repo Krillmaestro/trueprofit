@@ -15,6 +15,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Search, Download, ShoppingCart, DollarSign, TrendingUp, Package, ChevronLeft, ChevronRight } from 'lucide-react'
+import { EmptyState } from '@/components/EmptyState'
 
 interface Order {
   id: string
@@ -237,11 +238,11 @@ export default function OrdersPage() {
         </CardHeader>
         <CardContent>
           {orders.length === 0 ? (
-            <div className="text-center py-12 text-slate-500">
-              <ShoppingCart className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p className="text-lg font-medium">No orders found</p>
-              <p className="text-sm">Connect a store and sync orders to see them here</p>
-            </div>
+            <EmptyState
+              type="orders"
+              customTitle={searchTerm ? 'Inga ordrar hittades' : undefined}
+              customDescription={searchTerm ? `Inga ordrar matchar "${searchTerm}". Prova en annan sökning.` : undefined}
+            />
           ) : (
             <>
               <Table>
