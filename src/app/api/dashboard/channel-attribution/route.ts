@@ -77,7 +77,26 @@ export async function GET(request: NextRequest) {
   })
   const storeIds = stores.map(s => s.id)
 
-  // Get total revenue and COGS for break-even calculation
+  // Get payment fee configurations
+  const paymentFeeConfigs = await prisma.paymentFeeConfig.findMany({
+    where: {
+      storeId: { in: storeIds },
+      isActive: true,
+    },
+  })
+  const feeConfigMap = new Map<string, { percentageFee: number; fixedFee: number }>()
+  for (const config of paymentFeeConfigs) {
+    feeConfigMap.set(config.gateway.toLowerCase(), {
+      percentageFee: Number(config.percentageFee),
+      fixedFee: Number(config.fixedFee),
+    })
+  }
+
+  // Default payment fee configuration
+  const DEFAULT_FEE_RATE = 2.9 // percentage
+  const DEFAULT_FIXED_FEE = 3 // SEK
+
+  // Get orders with line items, transactions for break-even calculation
   const orders = await prisma.order.findMany({
     where: {
       storeId: { in: storeIds },
@@ -88,6 +107,14 @@ export async function GET(request: NextRequest) {
     select: {
       totalPrice: true,
       totalTax: true,
+      transactions: {
+        select: {
+          gateway: true,
+          amount: true,
+          paymentFee: true,
+          paymentFeeCalculated: true,
+        },
+      },
       lineItems: {
         select: {
           quantity: true,
@@ -98,6 +125,9 @@ export async function GET(request: NextRequest) {
                 take: 1,
                 select: { costPrice: true },
               },
+              product: {
+                select: { isShippingExempt: true },
+              },
             },
           },
         },
@@ -105,24 +135,85 @@ export async function GET(request: NextRequest) {
     },
   })
 
+  // Get shipping cost tiers
+  const shippingTiers = await prisma.shippingCostTier.findMany({
+    where: {
+      storeId: { in: storeIds },
+      isActive: true,
+    },
+    orderBy: { minItems: 'asc' },
+  })
+
   // Calculate totals for break-even ROAS
+  // Break-Even ROAS = 1 / (1 - Variable Cost Ratio)
+  // Variable Costs = COGS + Payment Fees + Shipping Costs
   let totalRevenue = 0
   let totalCOGS = 0
   let totalTax = 0
+  let totalFees = 0
+  let totalShippingCost = 0
 
   for (const order of orders) {
     totalRevenue += Number(order.totalPrice)
     totalTax += Number(order.totalTax)
+
+    // Calculate COGS and count physical items for shipping
+    let physicalItemCount = 0
     for (const item of order.lineItems) {
       if (item.variant?.cogsEntries?.[0]) {
         totalCOGS += Number(item.variant.cogsEntries[0].costPrice) * item.quantity
       }
+      // Count physical items for shipping
+      const isExempt = item.variant?.product?.isShippingExempt || false
+      if (!isExempt) {
+        physicalItemCount += item.quantity
+      }
+    }
+
+    // Calculate payment fees
+    if (order.transactions && order.transactions.length > 0) {
+      for (const tx of order.transactions) {
+        if (tx.paymentFeeCalculated && Number(tx.paymentFee) > 0) {
+          totalFees += Number(tx.paymentFee)
+        } else {
+          const gateway = tx.gateway?.toLowerCase() || ''
+          const config = feeConfigMap.get(gateway)
+          if (config) {
+            totalFees += (Number(tx.amount) * config.percentageFee / 100) + config.fixedFee
+          } else {
+            totalFees += (Number(tx.amount) * DEFAULT_FEE_RATE / 100) + DEFAULT_FIXED_FEE
+          }
+        }
+      }
+    } else {
+      totalFees += (Number(order.totalPrice) * DEFAULT_FEE_RATE / 100) + DEFAULT_FIXED_FEE
+    }
+
+    // Calculate shipping cost based on tiers
+    if (shippingTiers.length > 0 && physicalItemCount > 0) {
+      // Find the appropriate tier
+      const tier = shippingTiers.find(t =>
+        physicalItemCount >= t.minItems &&
+        (t.maxItems === null || physicalItemCount <= t.maxItems)
+      ) || shippingTiers[shippingTiers.length - 1]
+
+      if (tier) {
+        totalShippingCost += Number(tier.cost)
+      }
     }
   }
 
+  // Net revenue excluding VAT (for contribution margin calculation)
   const netRevenue = totalRevenue - totalTax
-  const variableCostRatio = netRevenue > 0 ? totalCOGS / netRevenue : 0
+
+  // Variable costs that scale with each sale
+  const variableCosts = totalCOGS + totalFees + totalShippingCost
+  const variableCostRatio = netRevenue > 0 ? variableCosts / netRevenue : 0
   const contributionMarginRatio = 1 - variableCostRatio
+
+  // Break-Even ROAS = 1 / Contribution Margin Ratio
+  // Example: If variable costs are 45% of revenue, contribution margin is 55%
+  // Break-Even ROAS = 1 / 0.55 = 1.82x
   const breakEvenRoas = contributionMarginRatio > 0 ? 1 / contributionMarginRatio : 999
 
   // Build channel data
