@@ -451,17 +451,21 @@ async function computeDashboardSummary(
   return {
     summary: {
       // Revenue metrics
+      revenue: roundCurrency(grossRevenue + totalTax), // Alias for backward compatibility
       grossRevenue: roundCurrency(grossRevenue + totalTax), // Include VAT for "Omsättning"
       revenueExVat: roundCurrency(revenueExVat),
       netRevenue: roundCurrency(netRevenue),
       tax: roundCurrency(totalTax),
 
       // Cost metrics
+      costs: roundCurrency(totalCosts), // Alias for backward compatibility
       totalCosts: roundCurrency(totalCosts),
 
       // Profit metrics
       grossProfit: roundCurrency(grossProfit),
+      profit: roundCurrency(finalNetProfit), // Alias for backward compatibility
       netProfit: roundCurrency(finalNetProfit),
+      margin: roundPercentage(finalNetMargin), // Alias for backward compatibility
       grossMargin: roundPercentage(grossMargin),
       netMargin: roundPercentage(finalNetMargin),
 
