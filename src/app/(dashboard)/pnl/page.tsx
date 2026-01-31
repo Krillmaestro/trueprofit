@@ -180,7 +180,6 @@ export default function PnLPage() {
     const grossRevenue = pnlData.revenue.grossRevenue || pnlData.revenue.grossSales
     const vat = pnlData.revenue.vat || pnlData.revenue.tax
     const revenueExVat = pnlData.revenue.revenueExVat || pnlData.revenue.netRevenue
-    const estimatedTaxAmount = pnlData.estimatedTax?.amount || pnlData.taxes?.amount || 0
 
     const rows = [
       ['P&L Report', pnlData.period],
@@ -211,11 +210,8 @@ export default function PnLPage() {
       ['RÖRELSERESULTAT (EBIT)', pnlData.operatingProfit],
       ['Rörelsemarginal', `${pnlData.operatingMargin}%`],
       [''],
-      ['NETTOVINST', pnlData.netProfit],
+      ['NETTOVINST (disponibelt)', pnlData.netProfit],
       ['Nettomarginal', `${pnlData.netMargin}%`],
-      [''],
-      ['Estimerad bolagsskatt (20.6%)', -estimatedTaxAmount],
-      ['Vinst efter skatt', pnlData.netProfit - estimatedTaxAmount],
     ]
 
     const csv = rows.map(row => row.join(',')).join('\n')
@@ -557,29 +553,13 @@ export default function PnLPage() {
               </div>
             </div>
 
-            {/* Estimated Corporate Tax - for information only */}
-            {(pnlData.estimatedTax || pnlData.taxes) && (
-              <div className="mt-4 p-4 bg-slate-50 rounded-lg">
-                <p className="text-sm font-medium text-slate-600 mb-2">Estimerad bolagsskatt (för information)</p>
-                <div className="flex justify-between py-1 text-sm">
-                  <span className="text-slate-500">
-                    Bolagsskatt ({pnlData.estimatedTax?.rate || pnlData.taxes?.rate || 20.6}%)
-                  </span>
-                  <span className="text-slate-600">
-                    -{formatCurrency(pnlData.estimatedTax?.amount || pnlData.taxes?.amount || 0)}
-                  </span>
-                </div>
-                <div className="flex justify-between py-1 text-sm font-medium border-t border-slate-200 mt-2 pt-2">
-                  <span className="text-slate-600">Vinst efter skatt</span>
-                  <span className="text-slate-700">
-                    {formatCurrency(pnlData.estimatedTax?.profitAfterTax || (pnlData.netProfit - (pnlData.taxes?.amount || 0)))}
-                  </span>
-                </div>
-                <p className="text-xs text-slate-400 mt-2">
-                  * Bolagsskatten är endast en uppskattning. Faktisk skatt beräknas vid bokslut.
-                </p>
-              </div>
-            )}
+            {/* Info about the profit figure */}
+            <div className="mt-4 p-4 bg-emerald-50 border border-emerald-200 rounded-lg">
+              <p className="text-sm text-emerald-800">
+                <strong>💡 Tips:</strong> Nettovinsten är beloppet du kan disponera via lön, utdelning eller återinvestering.
+                Målet är ofta att optimera uttag så att bolagsvinsten blir minimal.
+              </p>
+            </div>
           </div>
         </CardContent>
       </Card>
