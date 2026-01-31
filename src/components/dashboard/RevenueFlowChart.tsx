@@ -83,6 +83,110 @@ export function RevenueFlowChart({ data, loading }: RevenueFlowChartProps) {
     )
   }
 
+  // Handle empty or single data point - show summary instead of chart
+  if (!data || data.length === 0) {
+    return (
+      <GlowCard className="p-6">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-800">Revenue Flow</h2>
+            <p className="text-sm text-slate-500 mt-0.5">Revenue, costs & profit over time</p>
+          </div>
+        </div>
+        <div className="h-[280px] flex items-center justify-center">
+          <p className="text-slate-400">Ingen data för vald period</p>
+        </div>
+      </GlowCard>
+    )
+  }
+
+  // For single day, show a bar-style summary instead
+  if (data.length === 1) {
+    const day = data[0]
+    const maxValue = Math.max(day.revenue, day.costs, Math.abs(day.profit))
+
+    return (
+      <GlowCard className="p-6">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-800">Dagens Resultat</h2>
+            <p className="text-sm text-slate-500 mt-0.5">{day.date}</p>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-blue-500" />
+              <span className="text-sm text-slate-600">Revenue</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-rose-500" />
+              <span className="text-sm text-slate-600">Costs</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-emerald-500" />
+              <span className="text-sm text-slate-600">Profit</span>
+            </div>
+          </div>
+        </div>
+        <div className="space-y-6">
+          {/* Revenue Bar */}
+          <div>
+            <div className="flex justify-between text-sm mb-2">
+              <span className="text-slate-600 font-medium">Omsättning</span>
+              <span className="font-bold text-blue-600">{formatCurrency(day.revenue)}</span>
+            </div>
+            <div className="h-8 bg-slate-100 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-blue-400 to-blue-600 rounded-full transition-all duration-500"
+                style={{ width: `${maxValue > 0 ? (day.revenue / maxValue) * 100 : 0}%` }}
+              />
+            </div>
+          </div>
+          {/* Costs Bar */}
+          <div>
+            <div className="flex justify-between text-sm mb-2">
+              <span className="text-slate-600 font-medium">Kostnader</span>
+              <span className="font-bold text-rose-600">{formatCurrency(day.costs)}</span>
+            </div>
+            <div className="h-8 bg-slate-100 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-rose-400 to-rose-600 rounded-full transition-all duration-500"
+                style={{ width: `${maxValue > 0 ? (day.costs / maxValue) * 100 : 0}%` }}
+              />
+            </div>
+          </div>
+          {/* Profit Bar */}
+          <div>
+            <div className="flex justify-between text-sm mb-2">
+              <span className="text-slate-600 font-medium">Vinst</span>
+              <span className={`font-bold ${day.profit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                {day.profit >= 0 ? '+' : ''}{formatCurrency(day.profit)}
+              </span>
+            </div>
+            <div className="h-8 bg-slate-100 rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all duration-500 ${
+                  day.profit >= 0
+                    ? 'bg-gradient-to-r from-emerald-400 to-emerald-600'
+                    : 'bg-gradient-to-r from-rose-400 to-rose-600'
+                }`}
+                style={{ width: `${maxValue > 0 ? (Math.abs(day.profit) / maxValue) * 100 : 0}%` }}
+              />
+            </div>
+          </div>
+          {/* Margin indicator */}
+          <div className="pt-4 border-t border-slate-100">
+            <div className="flex items-center justify-center gap-3">
+              <div className={`text-3xl font-bold ${day.profit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                {day.revenue > 0 ? ((day.profit / day.revenue) * 100).toFixed(1) : 0}%
+              </div>
+              <div className="text-slate-500 text-sm">vinstmarginal</div>
+            </div>
+          </div>
+        </div>
+      </GlowCard>
+    )
+  }
+
   return (
     <GlowCard className="p-6">
       <div className="flex items-center justify-between mb-6">

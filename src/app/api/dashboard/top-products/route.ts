@@ -108,6 +108,7 @@ export async function GET(request: NextRequest) {
     fees: number
     orders: Set<string>
     quantity: number
+    hasCogs: boolean  // Track if this product has COGS data
   }>()
 
   for (const item of lineItems) {
@@ -125,6 +126,7 @@ export async function GET(request: NextRequest) {
       fees: 0,
       orders: new Set<string>(),
       quantity: 0,
+      hasCogs: false,
     }
 
     // Calculate revenue (price * quantity)
@@ -134,6 +136,7 @@ export async function GET(request: NextRequest) {
     // Calculate COGS
     if (item.variant.cogsEntries?.[0]) {
       existing.cogs += Number(item.variant.cogsEntries[0].costPrice) * item.quantity
+      existing.hasCogs = true
     }
 
     // Calculate proportional fees based on line item revenue vs order total
@@ -170,17 +173,20 @@ export async function GET(request: NextRequest) {
   const products = Array.from(productMap.values())
     .map((p) => {
       const profit = p.revenue - p.cogs - p.fees
-      const margin = p.revenue > 0 ? (profit / p.revenue) * 100 : 0
+      // Only show margin if we have COGS data, otherwise null
+      const margin = p.hasCogs && p.revenue > 0 ? (profit / p.revenue) * 100 : null
 
       return {
         id: p.id,
         name: p.name,
         sku: p.sku,
         revenue: Math.round(p.revenue * 100) / 100,
+        cogs: Math.round(p.cogs * 100) / 100,
         profit: Math.round(profit * 100) / 100,
-        margin: Math.round(margin * 10) / 10,
+        margin: margin !== null ? Math.round(margin * 10) / 10 : null,  // null = no COGS data
         orders: p.orders.size,
         quantity: p.quantity,
+        hasCogs: p.hasCogs,
         trend: 'stable' as const, // TODO: Could calculate by comparing with previous period
       }
     })

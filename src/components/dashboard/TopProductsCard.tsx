@@ -13,9 +13,10 @@ interface Product {
   sku: string
   revenue: number
   profit: number
-  margin: number
+  margin: number | null  // null when COGS is missing
   orders: number
   trend: 'up' | 'down' | 'stable'
+  hasCogs?: boolean
 }
 
 interface TopProductsCardProps {
@@ -118,14 +119,17 @@ export function TopProductsCard({ products, loading, startDate, endDate }: TopPr
               <div
                 className={cn(
                   'px-2 py-1 rounded-md text-xs font-medium',
-                  product.margin >= 50
+                  product.margin === null
+                    ? 'bg-slate-100 text-slate-500'  // No COGS data
+                    : product.margin >= 50
                     ? 'bg-emerald-50 text-emerald-700'
                     : product.margin >= 30
                     ? 'bg-amber-50 text-amber-700'
                     : 'bg-rose-50 text-rose-700'
                 )}
+                title={product.margin === null ? 'COGS saknas - lägg till för exakt marginal' : `${product.margin.toFixed(1)}% vinstmarginal`}
               >
-                {product.margin.toFixed(0)}%
+                {product.margin !== null ? `${product.margin.toFixed(0)}%` : 'N/A'}
               </div>
 
               {/* Trend & profit */}

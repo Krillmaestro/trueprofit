@@ -484,9 +484,9 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         <RevenueFlowChart data={profitChartData} loading={loading} />
         <ProfitPieChart
-          revenue={data.summary.revenueExVat || (data.summary.revenue - (data.summary.tax || data.breakdown.revenue.tax || 0))}
+          revenue={data.summary.revenue}  // Full revenue inkl VAT
           costs={{
-            vat: 0,  // VAT is pass-through, not a business cost
+            vat: data.summary.tax || data.breakdown.revenue.tax || 0,  // VAT är en kostnad!
             cogs: data.breakdown.costs.cogs,
             shipping: data.breakdown.costs.shippingCost || data.breakdown.costs.shipping,
             fees: data.breakdown.costs.fees,
@@ -530,6 +530,7 @@ export default function DashboardPage() {
           revenue={data.summary.revenue}
           profit={data.summary.profit}
           costs={{
+            vat: data.summary.tax || data.breakdown.revenue.tax || 0,  // VAT är en kostnad!
             cogs: data.breakdown.costs.cogs,
             fees: data.breakdown.costs.fees,
             shippingCost: data.breakdown.costs.shippingCost || data.breakdown.costs.shipping,

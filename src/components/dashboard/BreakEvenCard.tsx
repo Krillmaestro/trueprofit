@@ -7,6 +7,7 @@ import { Target, TrendingUp, AlertCircle, CheckCircle2, Clock } from 'lucide-rea
 import { Progress } from '@/components/ui/progress'
 
 interface CostBreakdown {
+  vat?: number  // VAT är en kostnad (betalas till Skatteverket)
   cogs: number
   fees: number
   shippingCost: number
@@ -41,9 +42,10 @@ export function BreakEvenCard({
   const analysis = useMemo(() => {
     // Separera fasta och variabla kostnader för korrekt break-even beräkning
     // Fasta kostnader: fixed + salaries + oneTime (påverkas ej av försäljningsvolym)
-    // Variabla kostnader: COGS + fees + shipping + adSpend (ökar med försäljning)
+    // Variabla kostnader: VAT + COGS + fees + shipping + adSpend (ökar med försäljning)
+    // VAT är en variabel kostnad - den ökar proportionellt med försäljning
     const fixedCosts = costs.fixed + costs.salaries + costs.oneTime
-    const variableCosts = costs.cogs + costs.fees + costs.shippingCost + costs.adSpend + costs.variable
+    const variableCosts = (costs.vat || 0) + costs.cogs + costs.fees + costs.shippingCost + costs.adSpend + costs.variable
     const totalCosts = fixedCosts + variableCosts
 
     // Contribution margin = Revenue - Variable Costs
