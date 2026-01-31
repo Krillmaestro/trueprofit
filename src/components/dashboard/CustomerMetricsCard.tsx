@@ -32,6 +32,9 @@ interface CustomerMetrics {
   ltv: number
   ltvCacRatio: number
   adSpend: number
+  breakEvenRoasNewCustomers?: number
+  currentRoas?: number
+  adRevenue?: number
 }
 
 interface Insight {
@@ -73,24 +76,9 @@ export function CustomerMetricsCard({
         setInsights(data.insights || [])
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Error loading data')
-        // Use demo data
-        setMetrics({
-          totalCustomersAllTime: 2847,
-          customersInPeriod: 1247,
-          newCustomers: 892,
-          returningCustomers: 355,
-          repeatRate: 28.5,
-          avgOrdersPerCustomer: 1.85,
-          aov: 396,
-          cac: 58.3,
-          ltv: 732,
-          ltvCacRatio: 12.55,
-          adSpend: 52000,
-        })
-        setInsights([
-          { type: 'success', message: 'Utmärkt LTV:CAC ratio (12.5:1). Dina kunder är värda 12.5x vad det kostar att skaffa dem.' },
-          { type: 'info', message: 'Återköpsfrekvens på 28.5%. Överväg email-marketing för att öka.' },
-        ])
+        // Set null - no demo data
+        setMetrics(null)
+        setInsights([])
       } finally {
         setLoading(false)
       }
@@ -276,6 +264,54 @@ export function CustomerMetricsCard({
           <span>Utmärkt</span>
         </div>
       </div>
+
+      {/* Break-Even ROAS for New Customers */}
+      {metrics.breakEvenRoasNewCustomers && metrics.currentRoas !== undefined && (
+        <div className="mb-4 p-3 bg-gradient-to-r from-indigo-50 to-violet-50 rounded-xl border border-indigo-100">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium text-indigo-700">Break-Even ROAS (nya kunder)</span>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger>
+                    <Info className="w-3 h-3 text-indigo-500" />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Minsta ROAS för att nya kunder ska vara lönsamma</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+            <div className={cn(
+              'px-2 py-0.5 rounded text-xs font-semibold',
+              metrics.currentRoas >= metrics.breakEvenRoasNewCustomers
+                ? 'bg-emerald-100 text-emerald-700'
+                : 'bg-rose-100 text-rose-700'
+            )}>
+              {metrics.currentRoas >= metrics.breakEvenRoasNewCustomers ? 'Lönsam' : 'Ej lönsam'}
+            </div>
+          </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-xs text-indigo-600">Nuvarande ROAS</div>
+              <div className={cn(
+                'text-xl font-bold',
+                metrics.currentRoas >= metrics.breakEvenRoasNewCustomers
+                  ? 'text-emerald-600'
+                  : 'text-rose-600'
+              )}>
+                {metrics.currentRoas.toFixed(2)}x
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="text-xs text-indigo-600">BE ROAS</div>
+              <div className="text-xl font-bold text-indigo-700">
+                {metrics.breakEvenRoasNewCustomers.toFixed(2)}x
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Secondary metrics */}
       <div className="grid grid-cols-3 gap-3 mb-4">

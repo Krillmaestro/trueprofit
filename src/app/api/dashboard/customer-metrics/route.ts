@@ -85,10 +85,64 @@ export async function GET(request: NextRequest) {
     },
     _sum: {
       spend: true,
+      revenue: true,
     },
   })
 
   const totalAdSpend = Number(adSpendResult._sum.spend || 0)
+  const adRevenue = Number(adSpendResult._sum.revenue || 0)
+
+  // Calculate Break-Even ROAS for new customers
+  // Get COGS, fees, and shipping costs to calculate variable cost ratio
+  const ordersWithCosts = await prisma.order.findMany({
+    where: {
+      storeId: { in: storeIds },
+      processedAt: dateFilter,
+      financialStatus: { notIn: ['refunded', 'voided'] },
+      cancelledAt: null,
+    },
+    select: {
+      totalPrice: true,
+      totalTax: true,
+      lineItems: {
+        select: {
+          quantity: true,
+          variant: {
+            select: {
+              cogsEntries: {
+                where: { effectiveTo: null },
+                take: 1,
+                select: { costPrice: true },
+              },
+            },
+          },
+        },
+      },
+    },
+  })
+
+  let periodCOGS = 0
+  let periodRevenueForBE = 0
+  let periodTax = 0
+
+  for (const order of ordersWithCosts) {
+    periodRevenueForBE += Number(order.totalPrice)
+    periodTax += Number(order.totalTax)
+    for (const item of order.lineItems) {
+      if (item.variant?.cogsEntries?.[0]) {
+        periodCOGS += Number(item.variant.cogsEntries[0].costPrice) * item.quantity
+      }
+    }
+  }
+
+  // Estimate fees at 3% and shipping at 5% of revenue
+  const estimatedFees = periodRevenueForBE * 0.03
+  const estimatedShipping = periodRevenueForBE * 0.05
+  const netRevenue = periodRevenueForBE - periodTax
+  const variableCosts = periodCOGS + estimatedFees + estimatedShipping
+  const variableCostRatio = netRevenue > 0 ? variableCosts / netRevenue : 0.5
+  const contributionMarginRatio = 1 - variableCostRatio
+  const breakEvenRoasNewCustomers = contributionMarginRatio > 0 ? 1 / contributionMarginRatio : 2.0
 
   // Build customer data
   const customerData = new Map<string, {
@@ -215,7 +269,12 @@ export async function GET(request: NextRequest) {
 
       // Revenue
       totalRevenueAllTime: totalRevenue,
-      periodRevenue,
+      periodRevenueCalc: periodOrders.reduce((sum, o) => sum + Number(o.totalPrice), 0),
+
+      // Break-Even ROAS for new customers
+      breakEvenRoasNewCustomers,
+      currentRoas: totalAdSpend > 0 ? adRevenue / totalAdSpend : 0,
+      adRevenue,
     },
     period: {
       startDate: dateFilter.gte.toISOString(),
