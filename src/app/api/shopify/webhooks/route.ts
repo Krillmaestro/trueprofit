@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { prisma } from '@/lib/prisma'
+import {
+  generateWebhookId,
+  isWebhookProcessed,
+  markWebhookProcessed,
+} from '@/lib/webhooks/handler'
+import { processRefund, ShopifyRefundData } from '@/lib/sync/refund-processor'
 
 const SHOPIFY_API_SECRET = process.env.SHOPIFY_API_SECRET!
 
@@ -28,6 +34,27 @@ export async function POST(request: NextRequest) {
   }
 
   const data = JSON.parse(rawBody)
+
+  // ═══════════════════════════════════════════════════════════
+  // IDEMPOTENCY CHECK - Prevent duplicate webhook processing
+  // ═══════════════════════════════════════════════════════════
+  const webhookId = generateWebhookId(
+    topic || 'unknown',
+    shopDomain || 'unknown',
+    data
+  )
+
+  const alreadyProcessed = await isWebhookProcessed(webhookId)
+  if (alreadyProcessed) {
+    console.log(`[Webhook] Skipping duplicate: ${webhookId} (${topic})`)
+    return NextResponse.json({
+      success: true,
+      processed: false,
+      skipped: true,
+      message: 'Webhook already processed',
+    })
+  }
+  // ═══════════════════════════════════════════════════════════
 
   // Find the store
   const store = await prisma.store.findUnique({
@@ -66,9 +93,32 @@ export async function POST(request: NextRequest) {
         console.log(`Unhandled webhook topic: ${topic}`)
     }
 
-    return NextResponse.json({ success: true })
+    // ═══════════════════════════════════════════════════════════
+    // Mark webhook as processed AFTER successful processing
+    // ═══════════════════════════════════════════════════════════
+    await markWebhookProcessed(
+      webhookId,
+      topic || 'unknown',
+      store.id,
+      data,
+      'PROCESSED'
+    )
+    // ═══════════════════════════════════════════════════════════
+
+    return NextResponse.json({ success: true, processed: true })
   } catch (error) {
     console.error(`Webhook error for ${topic}:`, error)
+
+    // Mark webhook as failed
+    await markWebhookProcessed(
+      webhookId,
+      topic || 'unknown',
+      store.id,
+      data,
+      'FAILED',
+      error instanceof Error ? error.message : 'Unknown error'
+    )
+
     return NextResponse.json({ error: 'Webhook processing failed' }, { status: 500 })
   }
 }
@@ -256,41 +306,13 @@ async function handleProductDelete(storeId: string, productData: Record<string, 
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function handleRefundWebhook(storeId: string, refundData: Record<string, any>) {
-  const order = await prisma.order.findFirst({
-    where: {
-      storeId,
-      shopifyOrderId: BigInt(refundData.order_id),
-    },
-  })
-
-  if (!order) return
-
-  // Calculate total refund amount
-  const refundAmount = refundData.transactions?.reduce(
-    (sum: number, t: { amount: string }) => sum + parseFloat(t.amount || '0'),
-    0
-  ) || 0
-
-  // Update order's refunded amount
-  await prisma.order.update({
-    where: { id: order.id },
-    data: {
-      totalRefundAmount: {
-        increment: refundAmount,
-      },
-    },
-  })
-
-  // Create refund record
-  await prisma.orderRefund.create({
-    data: {
-      orderId: order.id,
-      shopifyRefundId: BigInt(refundData.id),
-      amount: refundAmount,
-      note: refundData.note || null,
-      processedAt: refundData.processed_at ? new Date(refundData.processed_at) : new Date(),
-    },
-  })
+  // ═══════════════════════════════════════════════════════════
+  // Use the proper refund processor which:
+  // 1. Calculates COGS reversal per line item
+  // 2. Uses upsert to handle duplicates
+  // 3. Recalculates order totals from refund records (no increment)
+  // ═══════════════════════════════════════════════════════════
+  await processRefund(refundData as ShopifyRefundData, storeId)
 }
 
 async function handleAppUninstalled(storeId: string) {
