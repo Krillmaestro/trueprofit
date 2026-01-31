@@ -80,16 +80,16 @@ export function ProfitPieChart({
     const percent = revenue > 0 ? (item.value / revenue) * 100 : 0
 
     return (
-      <div className="bg-white rounded-lg shadow-lg border border-slate-200 p-3">
-        <div className="flex items-center gap-2 mb-1">
+      <div className="bg-white rounded-xl shadow-2xl border border-slate-200 p-4" style={{ zIndex: 9999 }}>
+        <div className="flex items-center gap-3 mb-3">
           <div
-            className="w-3 h-3 rounded-full"
+            className="w-5 h-5 rounded-full shadow-md ring-2 ring-white"
             style={{ backgroundColor: item.payload.color }}
           />
-          <span className="font-medium text-slate-800">{item.name}</span>
+          <span className="font-bold text-slate-900 text-lg">{item.name}</span>
         </div>
-        <div className="text-lg font-bold text-slate-900">{formatCurrency(item.value)}</div>
-        <div className="text-sm text-slate-500">{percent.toFixed(1)}% av omsättning</div>
+        <div className="text-2xl font-bold text-slate-900 mb-1">{formatCurrency(item.value)}</div>
+        <div className="text-base font-semibold text-slate-600">{percent.toFixed(1)}% av omsättning</div>
       </div>
     )
   }
@@ -127,16 +127,16 @@ export function ProfitPieChart({
         </div>
       </div>
 
-      {/* Pie Chart */}
-      <div className="h-64">
+      {/* Pie Chart with center label */}
+      <div className="h-64 relative">
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
             <Pie
               data={data}
               cx="50%"
               cy="50%"
-              innerRadius={60}
-              outerRadius={90}
+              innerRadius={55}
+              outerRadius={85}
               paddingAngle={2}
               dataKey="value"
             >
@@ -144,21 +144,25 @@ export function ProfitPieChart({
                 <Cell key={`cell-${index}`} fill={entry.color} />
               ))}
             </Pie>
-            <Tooltip content={<CustomTooltip />} />
+            <Tooltip
+              content={<CustomTooltip />}
+              wrapperStyle={{ zIndex: 9999, pointerEvents: 'none' }}
+            />
           </PieChart>
         </ResponsiveContainer>
-      </div>
-
-      {/* Center label */}
-      <div className="absolute inset-0 flex items-center justify-center pointer-events-none" style={{ marginTop: '-40px' }}>
-        <div className="text-center">
-          <div className={cn(
-            'text-2xl font-bold',
-            profit >= 0 ? 'text-emerald-600' : 'text-rose-600'
-          )}>
-            {profitPercent.toFixed(0)}%
+        {/* Center label - positioned inside the donut hole with solid background */}
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none" style={{ zIndex: 1 }}>
+          <div className="text-center bg-white rounded-full w-24 h-24 flex flex-col items-center justify-center shadow-lg border border-slate-100">
+            <div className={cn(
+              'text-3xl font-bold leading-none',
+              profit >= 0 ? 'text-emerald-600' : 'text-rose-600'
+            )}>
+              {profitPercent.toFixed(0)}%
+            </div>
+            <div className="text-xs text-slate-500 mt-1 font-semibold uppercase tracking-wider">
+              {profit >= 0 ? 'vinst' : 'förlust'}
+            </div>
           </div>
-          <div className="text-xs text-slate-500">Vinstmarginal</div>
         </div>
       </div>
 

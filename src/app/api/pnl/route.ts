@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { calculateShippingCost, ShippingTier } from '@/lib/shipping'
 
 // Default payment fee configuration
 const DEFAULT_FEE_RATE = 2.9
@@ -71,8 +72,30 @@ export async function GET(request: NextRequest) {
     storeFilter.id = storeId
   }
 
-  const stores = await prisma.store.findMany({ where: storeFilter })
+  const stores = await prisma.store.findMany({
+    where: storeFilter,
+    include: {
+      shippingCostTiers: {
+        where: { isActive: true },
+        orderBy: { minItems: 'asc' },
+      },
+    },
+  })
   const storeIds = stores.map((s) => s.id)
+
+  // Create a map of store -> shipping tiers for quick lookup
+  const storeShippingTiers = new Map<string, ShippingTier[]>()
+  for (const store of stores) {
+    if (store.shippingCostTiers.length > 0) {
+      storeShippingTiers.set(store.id, store.shippingCostTiers.map(t => ({
+        minItems: t.minItems,
+        maxItems: t.maxItems,
+        cost: Number(t.cost),
+        costPerAdditionalItem: Number(t.costPerAdditionalItem),
+        shippingZone: t.shippingZone,
+      })))
+    }
+  }
 
   // Get payment fee configurations
   const paymentFeeConfigs = await prisma.paymentFeeConfig.findMany({
@@ -96,6 +119,7 @@ export async function GET(request: NextRequest) {
       storeId: { in: storeIds },
       processedAt: dateFilter,
       financialStatus: { in: ['paid', 'partially_paid', 'partially_refunded'] },
+      cancelledAt: null, // Match dashboard filter
     },
     include: {
       lineItems: {
@@ -106,6 +130,11 @@ export async function GET(request: NextRequest) {
                 where: { effectiveTo: null },
                 take: 1,
               },
+              product: {
+                select: {
+                  isShippingExempt: true,
+                },
+              },
             },
           },
         },
@@ -115,24 +144,25 @@ export async function GET(request: NextRequest) {
     },
   })
 
-  // Revenue breakdown
-  let grossSales = 0
+  // Revenue breakdown - use totalPrice to match Shopify "Omsättning"
+  let grossRevenue = 0  // totalPrice (inkl VAT + frakt)
   let totalDiscounts = 0
   let totalRefunds = 0
-  let totalShipping = 0
+  let totalShippingRevenue = 0  // What customer paid for shipping
   let totalTax = 0
 
   // COGS breakdown
   let productCosts = 0
-  let shippingCosts = 0
+  let shippingCosts = 0  // Our ACTUAL shipping cost (from tiers)
 
   // Payment fees by gateway
   const paymentFeesByGateway: Record<string, number> = {}
 
   for (const order of orders) {
-    grossSales += Number(order.subtotalPrice)
+    // Use totalPrice to match Shopify's "Omsättning" (includes tax and shipping)
+    grossRevenue += Number(order.totalPrice)
     totalDiscounts += Number(order.totalDiscounts)
-    totalShipping += Number(order.totalShippingPrice)
+    totalShippingRevenue += Number(order.totalShippingPrice)
     totalTax += Number(order.totalTax)
 
     // Calculate refunds
@@ -147,8 +177,18 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Shipping costs come from the order's shipping price
-    shippingCosts += Number(order.totalShippingPrice)
+    // Calculate our ACTUAL shipping cost based on configured tiers
+    // NOT what the customer paid - that's revenue, not cost!
+    const storeTiers = storeShippingTiers.get(order.storeId)
+    if (storeTiers && storeTiers.length > 0) {
+      const physicalItemCount = order.lineItems.reduce((sum, item) => {
+        const isExempt = item.variant?.product?.isShippingExempt || false
+        return sum + (isExempt ? 0 : item.quantity)
+      }, 0)
+      if (physicalItemCount > 0) {
+        shippingCosts += calculateShippingCost(physicalItemCount, storeTiers)
+      }
+    }
 
     // Calculate payment fees by gateway
     if (order.transactions && order.transactions.length > 0) {
@@ -174,6 +214,22 @@ export async function GET(request: NextRequest) {
   }
 
   const totalPaymentFees = Object.values(paymentFeesByGateway).reduce((sum, fee) => sum + fee, 0)
+
+  // Calculate days in the selected period for monthly cost distribution
+  const periodStartMs = periodStart.getTime()
+  const periodEndMs = periodEnd.getTime()
+  const daysInPeriod = Math.max(1, Math.ceil((periodEndMs - periodStartMs) / (1000 * 60 * 60 * 24)) + 1)
+  const daysInMonth = new Date(periodStart.getFullYear(), periodStart.getMonth() + 1, 0).getDate()
+  const dailyDistributionFactor = daysInPeriod / daysInMonth
+
+  // Get monthly recurring costs that should be distributed
+  const monthlyCosts = await prisma.customCost.findMany({
+    where: {
+      teamId: teamMember.teamId,
+      isActive: true,
+      recurrenceType: 'MONTHLY',
+    },
+  })
 
   // Get custom costs by type
   const customCosts = await prisma.customCostEntry.findMany({
@@ -215,8 +271,18 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  const totalFixedCosts = Object.values(fixedCostsByName).reduce((sum, v) => sum + v, 0)
+  // Add distributed monthly costs
+  const distributedFixedCosts = monthlyCosts
+    .filter((c) => c.costType === 'FIXED')
+    .reduce((sum, c) => sum + (Number(c.amount || 0) * dailyDistributionFactor), 0)
+
+  const distributedSalaries = monthlyCosts
+    .filter((c) => c.costType === 'SALARY')
+    .reduce((sum, c) => sum + (Number(c.amount || 0) * dailyDistributionFactor), 0)
+
+  const totalFixedCosts = Object.values(fixedCostsByName).reduce((sum, v) => sum + v, 0) + distributedFixedCosts
   const totalVariableCosts = Object.values(variableCostsByName).reduce((sum, v) => sum + v, 0)
+  totalSalaries += distributedSalaries
 
   // Get ad spend by platform
   const adSpendData = await prisma.adSpend.findMany({
@@ -238,21 +304,33 @@ export async function GET(request: NextRequest) {
   }
   const totalAdSpend = Object.values(adSpendByPlatform).reduce((sum, v) => sum + v, 0)
 
-  // Calculate totals
-  const netRevenue = grossSales - totalDiscounts - totalRefunds
-  const totalCOGS = productCosts + shippingCosts
-  const grossProfit = netRevenue - totalCOGS
-  const grossMargin = netRevenue > 0 ? (grossProfit / netRevenue) * 100 : 0
+  // Calculate totals - MATCHING DASHBOARD LOGIC
+  // Revenue ex VAT = Gross Revenue - VAT - Refunds - Discounts
+  const revenueExVat = grossRevenue - totalTax - totalRefunds - totalDiscounts
 
+  // COGS = Product costs + Our actual shipping costs (NOT what customer paid!)
+  const totalCOGS = productCosts + shippingCosts
+  const grossProfit = revenueExVat - totalCOGS
+  const grossMargin = revenueExVat > 0 ? (grossProfit / revenueExVat) * 100 : 0
+
+  // Operating expenses = all other costs
   const totalOperatingExpenses = totalAdSpend + totalPaymentFees + totalFixedCosts + totalVariableCosts + totalSalaries + totalOneTime
   const operatingProfit = grossProfit - totalOperatingExpenses
-  const operatingMargin = netRevenue > 0 ? (operatingProfit / netRevenue) * 100 : 0
+  const operatingMargin = revenueExVat > 0 ? (operatingProfit / revenueExVat) * 100 : 0
 
-  // Estimate taxes (Swedish corporate tax is 20.6%)
+  // Total costs = COGS + Operating expenses (EXCLUDING VAT - VAT is pass-through)
+  const totalCosts = totalCOGS + totalOperatingExpenses
+
+  // Net profit = Revenue ex VAT - All Costs
+  // NOTE: Corporate tax (20.6%) is NOT deducted here to match Dashboard
+  // Users can see estimated tax separately if needed
+  const netProfit = revenueExVat - totalCosts
+  const netMargin = revenueExVat > 0 ? (netProfit / revenueExVat) * 100 : 0
+
+  // Estimate taxes for informational purposes only (Swedish corporate tax is 20.6%)
   const taxRate = 0.206
-  const estimatedTaxes = operatingProfit > 0 ? operatingProfit * taxRate : 0
-  const netProfit = operatingProfit - estimatedTaxes
-  const netMargin = netRevenue > 0 ? (netProfit / netRevenue) * 100 : 0
+  const estimatedCorporateTax = netProfit > 0 ? netProfit * taxRate : 0
+  const profitAfterTax = netProfit - estimatedCorporateTax
 
   return NextResponse.json({
     period: periodName,
@@ -261,16 +339,21 @@ export async function GET(request: NextRequest) {
       end: periodEnd,
     },
     revenue: {
-      grossSales,
+      grossRevenue,  // Matches Shopify "Omsättning" (totalPrice inkl VAT)
+      vat: totalTax,  // VAT is pass-through (not a cost)
       discounts: -totalDiscounts,
       returns: -totalRefunds,
-      shipping: totalShipping,
+      shippingRevenue: totalShippingRevenue,  // What customer paid for shipping
+      revenueExVat,  // Revenue excluding VAT, refunds, discounts - basis for profit
+      // Legacy fields for backward compatibility
+      grossSales: grossRevenue,
+      shipping: totalShippingRevenue,
       tax: totalTax,
-      netRevenue,
+      netRevenue: revenueExVat,
     },
     cogs: {
       productCosts,
-      shippingCosts,
+      shippingCosts,  // Our ACTUAL shipping cost (from tiers)
       totalCOGS,
     },
     grossProfit,
@@ -298,14 +381,19 @@ export async function GET(request: NextRequest) {
     },
     operatingProfit,
     operatingMargin: Math.round(operatingMargin * 10) / 10,
-    taxes: {
-      rate: taxRate * 100,
-      amount: estimatedTaxes,
-    },
+    // Total costs (excluding VAT) - matches Dashboard
+    totalCosts,
+    // Net profit BEFORE corporate tax - matches Dashboard
     netProfit,
     netMargin: Math.round(netMargin * 10) / 10,
+    // Estimated corporate tax (for information only, not deducted from netProfit)
+    estimatedTax: {
+      rate: taxRate * 100,
+      amount: estimatedCorporateTax,
+      profitAfterTax,
+    },
     orderCount: orders.length,
-    avgOrderValue: orders.length > 0 ? netRevenue / orders.length : 0,
+    avgOrderValue: orders.length > 0 ? revenueExVat / orders.length : 0,
   })
 }
 

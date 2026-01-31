@@ -103,13 +103,13 @@ export async function GET(request: NextRequest) {
   }
 
   // Get orders in date range with transactions
-  // Include all orders except completely refunded or voided ones
-  // This ensures subscription orders and other payment types are included
+  // Only include orders that have actually been paid
+  // This matches P&L logic and gives accurate revenue figures
   const orders = await prisma.order.findMany({
     where: {
       storeId: { in: storeIds },
       processedAt: dateFilter,
-      financialStatus: { notIn: ['refunded', 'voided'] },
+      financialStatus: { in: ['paid', 'partially_paid', 'partially_refunded'] },
       cancelledAt: null, // Exclude cancelled orders
     },
     include: {
@@ -304,20 +304,21 @@ export async function GET(request: NextRequest) {
   const totalAdSpend = Number(adSpend._sum.spend || 0)
   const adRevenue = Number(adSpend._sum.revenue || 0)
 
-  // Include shipping cost if configured with tiers, otherwise not included
-  // User can configure shipping cost tiers in Settings > Shipping Costs
-  // Include VAT as a cost since it goes to Skatteverket (not money we keep)
-  const totalCostsWithoutVat = totalCOGS + totalFees + fixedCosts + variableCosts + salaries + oneTimeCosts + totalAdSpend + totalShippingCost
-  const totalCosts = totalCostsWithoutVat + totalTax  // VAT is a cost!
+  // Calculate total costs INCLUDING VAT
+  // VAT is included as a cost because it's money that leaves your business to Skatteverket
+  // This shows "hur mycket pengar har vi kvar" perspective
+  const totalCostsExVat = totalCOGS + totalFees + fixedCosts + variableCosts + salaries + oneTimeCosts + totalAdSpend + totalShippingCost
+  const totalCosts = totalCostsExVat + totalTax  // VAT is a cost!
 
-  // Net profit: Gross revenue minus ALL costs (including VAT)
-  // This shows the actual money left after everything
-  const netProfit = grossRevenue - totalRefunds - totalDiscounts - totalCosts
-
-  // Margins calculated on gross revenue (since we now show VAT as a cost)
+  // Net profit calculation:
+  // Revenue (what customer paid) - All Costs (including VAT) = What's left
+  // Formula: Gross Revenue - Refunds - Discounts - All Costs (incl VAT)
   const effectiveRevenue = grossRevenue - totalRefunds - totalDiscounts
+  const netProfit = effectiveRevenue - totalCosts
+
+  // Margins calculated on effective revenue (gross minus refunds/discounts)
   const profitMargin = effectiveRevenue > 0 ? (netProfit / effectiveRevenue) * 100 : 0
-  const grossMargin = effectiveRevenue > 0 ? ((effectiveRevenue - totalCOGS) / effectiveRevenue) * 100 : 0
+  const grossMargin = effectiveRevenue > 0 ? ((effectiveRevenue - totalCOGS - totalTax) / effectiveRevenue) * 100 : 0
   const roas = totalAdSpend > 0 ? adRevenue / totalAdSpend : 0
 
   // Break-Even ROAS calculation
@@ -334,7 +335,7 @@ export async function GET(request: NextRequest) {
     where: {
       storeId: { in: storeIds },
       processedAt: dateFilter,
-      financialStatus: { notIn: ['refunded', 'voided'] },
+      financialStatus: { in: ['paid', 'partially_paid', 'partially_refunded'] },
       cancelledAt: null,
     },
     _sum: {
@@ -382,17 +383,17 @@ export async function GET(request: NextRequest) {
   const dailyData = Array.from(dailyDataMap.values()).sort((a, b) => a.date.localeCompare(b.date))
 
   // Cost breakdown for pie chart
-  // Shows where the money goes - including VAT (which goes to Skatteverket)
+  // Shows where the money goes INCLUDING VAT (money that leaves your business)
   const costBreakdown = [
-    { name: 'Moms (VAT)', value: totalTax, color: '#dc2626' },  // Red for tax
+    { name: 'Moms (VAT)', value: totalTax, color: '#ef4444' },  // Red - goes to Skatteverket
     { name: 'COGS', value: totalCOGS, color: '#3b82f6' },
-    { name: 'Shipping', value: totalShippingCost, color: '#ec4899' },
-    { name: 'Payment Fees', value: totalFees, color: '#f59e0b' },
     { name: 'Ad Spend', value: totalAdSpend, color: '#8b5cf6' },
-    { name: 'Fixed Costs', value: fixedCosts, color: '#22c55e' },
-    { name: 'Salaries', value: salaries, color: '#06b6d4' },
-    { name: 'Variable Costs', value: variableCosts, color: '#64748b' },
-    { name: 'One-time', value: oneTimeCosts, color: '#14b8a6' },
+    { name: 'Frakt', value: totalShippingCost, color: '#ec4899' },
+    { name: 'Avgifter', value: totalFees, color: '#f59e0b' },
+    { name: 'Fasta', value: fixedCosts, color: '#22c55e' },
+    { name: 'Löner', value: salaries, color: '#06b6d4' },
+    { name: 'Variabla', value: variableCosts, color: '#64748b' },
+    { name: 'Engång', value: oneTimeCosts, color: '#14b8a6' },
   ].filter((c) => c.value > 0)
 
   // Revenue breakdown for analysis
@@ -410,21 +411,21 @@ export async function GET(request: NextRequest) {
 
     return {
       summary: {
-        revenue: grossRevenue,  // Matches Shopify "Omsättning" (totalPrice)
-        revenueExVat: revenueExVat,  // Revenue excluding VAT
-        netRevenue: netRevenue,  // After VAT, discounts, refunds
-        tax: totalTax,  // VAT amount
-        costs: totalCosts,
+        revenue: grossRevenue,  // Matches Shopify "Omsättning" (totalPrice inkl VAT)
+        revenueExVat: effectiveRevenue,  // Revenue excluding VAT, refunds, discounts
+        netRevenue: netRevenue,  // After VAT, discounts, refunds (same as effectiveRevenue)
+        tax: totalTax,  // VAT amount (pass-through, not a cost)
+        costs: totalCosts,  // All business costs (excluding VAT)
         profit: netProfit,
         margin: profitMargin,
         grossMargin,
         orders: orders.length,
-        avgOrderValue: orders.length > 0 ? grossRevenue / orders.length : 0,
+        avgOrderValue: orders.length > 0 ? effectiveRevenue / orders.length : 0,  // AOV ex VAT
       },
       breakdown: {
         revenue: revenueBreakdown,
         costs: {
-          vat: totalTax,  // Moms - goes to Skatteverket
+          vat: totalTax,  // Moms - pass-through to Skatteverket (NOT included in totalCosts)
           cogs: totalCOGS,
           shippingRevenue: totalShipping,  // What customer paid for shipping
           shippingCost: totalShippingCost,  // Our actual shipping cost
@@ -434,8 +435,7 @@ export async function GET(request: NextRequest) {
           variable: variableCosts,
           salaries,
           oneTime: oneTimeCosts,
-          total: totalCosts,  // Now includes VAT
-          totalWithoutVat: totalCostsWithoutVat,  // Costs excluding VAT (for some calculations)
+          total: totalCosts,  // All business costs (excluding VAT)
         },
         profit: {
           gross: grossProfit,

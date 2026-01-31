@@ -26,7 +26,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Plus, Store, RefreshCw, Trash2, CheckCircle, XCircle, Loader2, ExternalLink } from 'lucide-react'
+import { Plus, Store, RefreshCw, Trash2, CheckCircle, XCircle, Loader2, ExternalLink, Calendar, History } from 'lucide-react'
 import { EmptyState } from '@/components/EmptyState'
 
 interface StoreData {
@@ -52,6 +52,8 @@ export default function StoresPage() {
   const [disconnecting, setDisconnecting] = useState<string | null>(null)
   const [confirmDisconnect, setConfirmDisconnect] = useState<StoreData | null>(null)
   const [connecting, setConnecting] = useState(false)
+  const [historicalSyncDialog, setHistoricalSyncDialog] = useState<StoreData | null>(null)
+  const [historicalSyncDate, setHistoricalSyncDate] = useState('2024-08-01')
 
   // Fetch stores on mount
   useEffect(() => {
@@ -85,7 +87,7 @@ export default function StoresPage() {
     window.location.href = `/api/shopify/oauth?shop=${fullDomain}`
   }
 
-  const handleSync = async (storeId: string, incremental: boolean = true) => {
+  const handleSync = async (storeId: string, incremental: boolean = true, sinceDate?: string) => {
     setSyncing(storeId)
     setSyncStatus({ message: 'Startar synkronisering...', type: 'info' })
 
@@ -97,7 +99,8 @@ export default function StoresPage() {
           storeId,
           type: 'all',
           background: true,
-          incremental, // Only sync new data since last sync
+          incremental,
+          sinceDate, // For historical sync
         }),
       })
 
@@ -186,6 +189,11 @@ export default function StoresPage() {
     }
 
     checkStatus()
+  }
+
+  const handleHistoricalSync = (store: StoreData) => {
+    handleSync(store.id, false, historicalSyncDate)
+    setHistoricalSyncDialog(null)
   }
 
   const handleDisconnect = async (store: StoreData) => {
@@ -419,6 +427,17 @@ export default function StoresPage() {
                     Full synk
                   </Button>
                   <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setHistoricalSyncDialog(store)}
+                    disabled={syncing === store.id || !store.isActive}
+                    title="Synka historisk data från valfritt datum"
+                    className="text-violet-600 hover:text-violet-700 hover:bg-violet-50"
+                  >
+                    <History className="w-4 h-4 mr-2" />
+                    Historisk synk
+                  </Button>
+                  <Button
                     variant="outline"
                     size="sm"
                     className="text-red-600 hover:text-red-700 hover:bg-red-50"
@@ -466,6 +485,62 @@ export default function StoresPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Historical sync dialog */}
+      <Dialog open={!!historicalSyncDialog} onOpenChange={() => setHistoricalSyncDialog(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <History className="w-5 h-5 text-violet-600" />
+              Historisk synkronisering
+            </DialogTitle>
+            <DialogDescription>
+              Synka orderdata från ett specifikt datum. Detta är användbart för att få historisk kunddata för bättre LTV/CAC-analys.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label htmlFor="sync-date" className="flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-slate-500" />
+                Startdatum
+              </Label>
+              <Input
+                id="sync-date"
+                type="date"
+                value={historicalSyncDate}
+                onChange={(e) => setHistoricalSyncDate(e.target.value)}
+                max={new Date().toISOString().split('T')[0]}
+              />
+              <p className="text-xs text-slate-500">
+                Alla ordrar från detta datum och framåt kommer att synkas.
+              </p>
+            </div>
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+              <p className="text-sm text-amber-800">
+                <strong>OBS:</strong> Historisk synkronisering kan ta lång tid beroende på hur mycket data som finns.
+                Synken körs i bakgrunden så du kan lämna sidan.
+              </p>
+            </div>
+            <div className="bg-violet-50 border border-violet-200 rounded-lg p-3">
+              <p className="text-sm text-violet-800">
+                <strong>Tips:</strong> För bäst LTV/CAC-analys rekommenderar vi att synka minst 6 månaders historik.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setHistoricalSyncDialog(null)}>
+              Avbryt
+            </Button>
+            <Button
+              onClick={() => historicalSyncDialog && handleHistoricalSync(historicalSyncDialog)}
+              className="bg-violet-600 hover:bg-violet-700"
+            >
+              <History className="w-4 h-4 mr-2" />
+              Starta historisk synk
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

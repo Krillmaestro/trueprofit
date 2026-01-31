@@ -17,16 +17,20 @@ interface PnLData {
   period: string
   dateRange: { start: string; end: string }
   revenue: {
-    grossSales: number
+    grossRevenue?: number  // New: Matches Shopify "Omsättning" (inkl VAT)
+    grossSales: number     // Legacy fallback
+    vat?: number           // VAT amount (pass-through)
     discounts: number
     returns: number
-    shipping: number
+    shippingRevenue?: number  // What customer paid for shipping
+    shipping: number       // Legacy fallback
     tax: number
-    netRevenue: number
+    revenueExVat?: number  // Revenue excluding VAT (basis for profit)
+    netRevenue: number     // Legacy fallback
   }
   cogs: {
     productCosts: number
-    shippingCosts: number
+    shippingCosts: number  // Our ACTUAL shipping cost (from tiers)
     totalCOGS: number
   }
   grossProfit: number
@@ -54,7 +58,14 @@ interface PnLData {
   }
   operatingProfit: number
   operatingMargin: number
-  taxes: {
+  totalCosts?: number  // All business costs (excluding VAT)
+  estimatedTax?: {
+    rate: number
+    amount: number
+    profitAfterTax: number
+  }
+  // Legacy fields
+  taxes?: {
     rate: number
     amount: number
   }
@@ -166,38 +177,45 @@ export default function PnLPage() {
   const handleExportCSV = () => {
     if (!pnlData) return
 
+    const grossRevenue = pnlData.revenue.grossRevenue || pnlData.revenue.grossSales
+    const vat = pnlData.revenue.vat || pnlData.revenue.tax
+    const revenueExVat = pnlData.revenue.revenueExVat || pnlData.revenue.netRevenue
+    const estimatedTaxAmount = pnlData.estimatedTax?.amount || pnlData.taxes?.amount || 0
+
     const rows = [
       ['P&L Report', pnlData.period],
       [''],
-      ['REVENUE'],
-      ['Gross Sales', pnlData.revenue.grossSales],
-      ['Discounts', pnlData.revenue.discounts],
-      ['Returns & Refunds', pnlData.revenue.returns],
-      ['Net Revenue', pnlData.revenue.netRevenue],
+      ['INTÄKTER'],
+      ['Omsättning (inkl. moms)', grossRevenue],
+      ['Moms (pass-through)', -vat],
+      ['Rabatter', pnlData.revenue.discounts],
+      ['Returer & Återbetalningar', pnlData.revenue.returns],
+      ['Nettoomsättning (ex. moms)', revenueExVat],
       [''],
-      ['COST OF GOODS SOLD'],
-      ['Product Costs', -pnlData.cogs.productCosts],
-      ['Shipping Costs', -pnlData.cogs.shippingCosts],
+      ['COGS (Varukostnad)'],
+      ['Produktkostnader', -pnlData.cogs.productCosts],
+      ['Fraktkostnader', -pnlData.cogs.shippingCosts],
       ['Total COGS', -pnlData.cogs.totalCOGS],
       [''],
-      ['GROSS PROFIT', pnlData.grossProfit],
-      ['Gross Margin', `${pnlData.grossMargin}%`],
+      ['BRUTTOVINST', pnlData.grossProfit],
+      ['Bruttomarginal', `${pnlData.grossMargin}%`],
       [''],
-      ['OPERATING EXPENSES'],
-      ['Marketing & Ads', -pnlData.operatingExpenses.marketing.total],
-      ['Payment Fees', -pnlData.operatingExpenses.paymentFees.total],
-      ['Fixed Costs', -pnlData.operatingExpenses.fixed.total],
-      ['Variable Costs', -pnlData.operatingExpenses.variable.total],
-      ['One-time Costs', -pnlData.operatingExpenses.oneTime],
-      ['Total Operating Expenses', -pnlData.operatingExpenses.totalOpex],
+      ['RÖRELSEKOSTNADER'],
+      ['Marknadsföring & Annonser', -pnlData.operatingExpenses.marketing.total],
+      ['Betalningsavgifter', -pnlData.operatingExpenses.paymentFees.total],
+      ['Fasta kostnader', -pnlData.operatingExpenses.fixed.total],
+      ['Rörliga kostnader', -pnlData.operatingExpenses.variable.total],
+      ['Engångskostnader', -pnlData.operatingExpenses.oneTime],
+      ['Totala rörelsekostnader', -pnlData.operatingExpenses.totalOpex],
       [''],
-      ['OPERATING PROFIT', pnlData.operatingProfit],
-      ['Operating Margin', `${pnlData.operatingMargin}%`],
+      ['RÖRELSERESULTAT (EBIT)', pnlData.operatingProfit],
+      ['Rörelsemarginal', `${pnlData.operatingMargin}%`],
       [''],
-      ['Estimated Taxes', -pnlData.taxes.amount],
+      ['NETTOVINST', pnlData.netProfit],
+      ['Nettomarginal', `${pnlData.netMargin}%`],
       [''],
-      ['NET PROFIT', pnlData.netProfit],
-      ['Net Margin', `${pnlData.netMargin}%`],
+      ['Estimerad bolagsskatt (20.6%)', -estimatedTaxAmount],
+      ['Vinst efter skatt', pnlData.netProfit - estimatedTaxAmount],
     ]
 
     const csv = rows.map(row => row.join(',')).join('\n')
@@ -344,24 +362,28 @@ export default function PnLPage() {
             <div>
               <h3 className="text-lg font-semibold text-slate-800 mb-3 flex items-center">
                 <DollarSign className="w-5 h-5 mr-2 text-blue-500" />
-                Revenue
+                Intäkter
               </h3>
               <div className="space-y-2 pl-7">
                 <div className="flex justify-between py-2 border-b border-slate-100">
-                  <span className="text-slate-600">Gross Sales</span>
-                  <span className="font-medium">{formatCurrency(pnlData.revenue.grossSales)}</span>
+                  <span className="text-slate-600">Omsättning (inkl. moms)</span>
+                  <span className="font-medium">{formatCurrency(pnlData.revenue.grossRevenue || pnlData.revenue.grossSales)}</span>
                 </div>
                 <div className="flex justify-between py-2 border-b border-slate-100">
-                  <span className="text-slate-600">Discounts</span>
+                  <span className="text-slate-600">Moms (pass-through)</span>
+                  <span className="font-medium text-slate-500">-{formatCurrency(pnlData.revenue.vat || pnlData.revenue.tax)}</span>
+                </div>
+                <div className="flex justify-between py-2 border-b border-slate-100">
+                  <span className="text-slate-600">Rabatter</span>
                   <span className="font-medium text-red-600">{formatCurrency(pnlData.revenue.discounts)}</span>
                 </div>
                 <div className="flex justify-between py-2 border-b border-slate-100">
-                  <span className="text-slate-600">Returns & Refunds</span>
+                  <span className="text-slate-600">Returer & Återbetalningar</span>
                   <span className="font-medium text-red-600">{formatCurrency(pnlData.revenue.returns)}</span>
                 </div>
-                <div className="flex justify-between py-2 bg-slate-50 px-3 rounded-lg font-semibold">
-                  <span>Net Revenue</span>
-                  <span>{formatCurrency(pnlData.revenue.netRevenue)}</span>
+                <div className="flex justify-between py-2 bg-blue-50 px-3 rounded-lg font-semibold">
+                  <span>Nettoomsättning (ex. moms)</span>
+                  <span>{formatCurrency(pnlData.revenue.revenueExVat || pnlData.revenue.netRevenue)}</span>
                 </div>
               </div>
             </div>
@@ -516,20 +538,14 @@ export default function PnLPage() {
               </div>
             </div>
 
-            {/* Taxes */}
-            <div className="flex justify-between py-2 border-b border-slate-200 pl-4">
-              <span className="text-slate-600">Estimated Taxes ({pnlData.taxes.rate}%)</span>
-              <span className="text-red-600">-{formatCurrency(pnlData.taxes.amount)}</span>
-            </div>
-
-            {/* Net Profit */}
+            {/* Net Profit - MATCHES DASHBOARD */}
             <div className={`flex justify-between py-4 px-4 rounded-lg border-2 ${
               pnlData.netProfit >= 0
                 ? 'bg-green-100 border-green-200'
                 : 'bg-red-100 border-red-200'
             }`}>
               <span className={`font-bold text-lg ${pnlData.netProfit >= 0 ? 'text-green-800' : 'text-red-800'}`}>
-                Net Profit
+                Nettovinst
               </span>
               <div className="text-right">
                 <span className={`font-bold text-lg ${pnlData.netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
@@ -540,6 +556,30 @@ export default function PnLPage() {
                 </span>
               </div>
             </div>
+
+            {/* Estimated Corporate Tax - for information only */}
+            {(pnlData.estimatedTax || pnlData.taxes) && (
+              <div className="mt-4 p-4 bg-slate-50 rounded-lg">
+                <p className="text-sm font-medium text-slate-600 mb-2">Estimerad bolagsskatt (för information)</p>
+                <div className="flex justify-between py-1 text-sm">
+                  <span className="text-slate-500">
+                    Bolagsskatt ({pnlData.estimatedTax?.rate || pnlData.taxes?.rate || 20.6}%)
+                  </span>
+                  <span className="text-slate-600">
+                    -{formatCurrency(pnlData.estimatedTax?.amount || pnlData.taxes?.amount || 0)}
+                  </span>
+                </div>
+                <div className="flex justify-between py-1 text-sm font-medium border-t border-slate-200 mt-2 pt-2">
+                  <span className="text-slate-600">Vinst efter skatt</span>
+                  <span className="text-slate-700">
+                    {formatCurrency(pnlData.estimatedTax?.profitAfterTax || (pnlData.netProfit - (pnlData.taxes?.amount || 0)))}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400 mt-2">
+                  * Bolagsskatten är endast en uppskattning. Faktisk skatt beräknas vid bokslut.
+                </p>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>

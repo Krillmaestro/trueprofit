@@ -7,11 +7,8 @@ import {
   TrendingUp,
   TrendingDown,
   ArrowRight,
-  Minus,
-  DollarSign,
   Percent,
   ShoppingCart,
-  Target,
 } from 'lucide-react'
 
 interface NetProfitHeroCardProps {
@@ -47,10 +44,8 @@ export function NetProfitHeroCard({
       ? ((profit - previousProfit) / Math.abs(previousProfit || 1)) * 100
       : null
 
-    // Profit status
-    const status = profit >= 0
-      ? margin >= 30 ? 'excellent' : margin >= 15 ? 'good' : 'ok'
-      : 'loss'
+    // Profit status - simple: green for profit, red for loss
+    const status = profit >= 0 ? 'profit' : 'loss'
 
     return {
       profitPerOrder,
@@ -59,7 +54,7 @@ export function NetProfitHeroCard({
       change,
       status,
     }
-  }, [revenue, costs, profit, margin, orders, previousProfit])
+  }, [revenue, costs, profit, orders, previousProfit])
 
   const formatCurrency = (value: number) => {
     const absValue = Math.abs(value)
@@ -74,26 +69,12 @@ export function NetProfitHeroCard({
 
   const getStatusConfig = () => {
     switch (analysis.status) {
-      case 'excellent':
+      case 'profit':
         return {
           gradient: 'from-emerald-500 to-teal-600',
           bgGradient: 'from-emerald-500/10 to-teal-600/10',
-          text: 'Utmärkt',
+          text: 'Vinst',
           color: 'text-emerald-600',
-        }
-      case 'good':
-        return {
-          gradient: 'from-emerald-500 to-emerald-600',
-          bgGradient: 'from-emerald-500/10 to-emerald-600/10',
-          text: 'Bra',
-          color: 'text-emerald-600',
-        }
-      case 'ok':
-        return {
-          gradient: 'from-amber-500 to-orange-500',
-          bgGradient: 'from-amber-500/10 to-orange-500/10',
-          text: 'OK',
-          color: 'text-amber-600',
         }
       case 'loss':
       default:

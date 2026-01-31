@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  const { storeId, type, background, incremental } = await request.json()
+  const { storeId, type, background, incremental, sinceDate } = await request.json()
 
   // Get store and verify access
   const store = await prisma.store.findFirst({
@@ -64,11 +64,18 @@ export async function POST(request: NextRequest) {
     accessToken,
   })
 
-  // For incremental sync, use lastSyncAt if available
-  // Otherwise start from January 1st, 2026
-  const sinceDateForOrders = incremental && store.lastSyncAt
-    ? store.lastSyncAt
-    : new Date('2026-01-01T00:00:00Z')
+  // Determine the date to sync from:
+  // 1. If sinceDate is provided, use it (for historical sync)
+  // 2. If incremental and lastSyncAt exists, use lastSyncAt
+  // 3. Otherwise start from January 1st, 2026
+  let sinceDateForOrders: Date
+  if (sinceDate) {
+    sinceDateForOrders = new Date(sinceDate)
+  } else if (incremental && store.lastSyncAt) {
+    sinceDateForOrders = store.lastSyncAt
+  } else {
+    sinceDateForOrders = new Date('2026-01-01T00:00:00Z')
+  }
 
   // Background sync: start the job and return immediately
   if (background) {
