@@ -443,6 +443,7 @@ async function computeDashboardSummary(
   // ===========================================
 
   const costBreakdown = [
+    { name: 'Moms (VAT)', value: roundCurrency(totalTax), color: '#ef4444' },  // VAT är en kostnad!
     { name: 'COGS', value: roundCurrency(totalCOGS), color: '#3b82f6' },
     { name: 'Ad Spend', value: roundCurrency(totalAdSpend), color: '#8b5cf6' },
     { name: 'Fraktkostnad', value: roundCurrency(totalShippingCost), color: '#ec4899' },
@@ -524,6 +525,7 @@ async function computeDashboardSummary(
       impressions: adSpend._sum.impressions || 0,
       clicks: adSpend._sum.clicks || 0,
       conversions: adSpend._sum.conversions || 0,
+      hasData: totalAdSpend > 0,  // Flag to indicate if ads data exists for this period
     },
     period: {
       startDate: dateFilter.gte.toISOString(),
@@ -538,6 +540,9 @@ async function computeDashboardSummary(
         : 100,
       cogsWarning: unmatchedLineItems > 0
         ? `${unmatchedLineItems} produkter saknar COGS-data`
+        : null,
+      adsWarning: totalAdSpend === 0 && orders.length > 0
+        ? 'Ingen annonsdata för denna period. Synka historisk data i Ads-inställningarna.'
         : null,
     },
   }

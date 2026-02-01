@@ -21,6 +21,9 @@ import {
 /**
  * Simple COGS lookup from an array of entries at a specific date
  * Used by API routes for direct lookups without full COGSData structure
+ *
+ * IMPORTANT: If no entry matches the exact date, we use the OLDEST entry as fallback.
+ * This ensures historical orders still get COGS even if effectiveFrom is set later.
  */
 export function getCOGSAtDateFromEntries(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -31,22 +34,38 @@ export function getCOGSAtDateFromEntries(
     return null
   }
 
+  // Helper to extract price value
+  const extractPrice = (price: unknown): number => {
+    if (typeof price === 'number') return price
+    if (price && typeof (price as { toNumber?: () => number }).toNumber === 'function') {
+      return (price as { toNumber: () => number }).toNumber()
+    }
+    if (price) return Number(price)
+    return 0
+  }
+
   // Find the entry that was effective at the given date
   for (const entry of entries) {
     const effectiveFrom = new Date(entry.effectiveFrom)
     const effectiveTo = entry.effectiveTo ? new Date(entry.effectiveTo) : null
 
     if (effectiveFrom <= date && (effectiveTo === null || effectiveTo >= date)) {
-      // Handle both plain numbers and Decimal types
-      const price = entry.costPrice
-      if (typeof price === 'number') return price
-      if (price && typeof price.toNumber === 'function') return price.toNumber()
-      if (price) return Number(price)
-      return 0
+      return extractPrice(entry.costPrice)
     }
   }
 
-  // No matching date range found
+  // FALLBACK: If order date is BEFORE all effectiveFrom dates,
+  // use the oldest entry (first chronologically) as the best guess
+  // This handles historical orders before COGS was set up
+  const sortedEntries = [...entries].sort((a, b) =>
+    new Date(a.effectiveFrom).getTime() - new Date(b.effectiveFrom).getTime()
+  )
+
+  const oldestEntry = sortedEntries[0]
+  if (oldestEntry) {
+    return extractPrice(oldestEntry.costPrice)
+  }
+
   return null
 }
 

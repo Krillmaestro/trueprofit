@@ -100,11 +100,14 @@ interface DashboardData {
     impressions: number
     clicks: number
     conversions: number
+    hasData?: boolean
   }
   dataQuality: {
     totalLineItems: number
     unmatchedLineItems: number
     cogsCompleteness: number
+    cogsWarning?: string | null
+    adsWarning?: string | null
   }
 }
 
@@ -359,13 +362,23 @@ export default function DashboardPage() {
         />
       )}
 
-      {/* Data Quality Warning */}
+      {/* Data Quality Warnings */}
       {data.dataQuality.cogsCompleteness < 80 && (
         <Alert className="bg-blue-50 border-blue-200">
           <AlertTriangle className="h-4 w-4 text-blue-600" />
           <AlertDescription className="text-blue-800">
             Endast {data.dataQuality.cogsCompleteness.toFixed(0)}% av dina produkter har COGS.
             Lägg till COGS-data för mer exakta vinstberäkningar.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Ads Data Warning */}
+      {data.dataQuality.adsWarning && (
+        <Alert className="bg-amber-50 border-amber-200">
+          <AlertTriangle className="h-4 w-4 text-amber-600" />
+          <AlertDescription className="text-amber-800">
+            {data.dataQuality.adsWarning}
           </AlertDescription>
         </Alert>
       )}
