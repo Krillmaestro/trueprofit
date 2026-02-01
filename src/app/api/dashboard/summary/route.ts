@@ -268,18 +268,19 @@ async function computeDashboardSummary(
   // USE CALCULATION ENGINE FOR FINAL NUMBERS
   // ===========================================
 
-  // Gross revenue = subtotal + shipping
-  // IMPORTANT: Shopify's subtotalPrice is ALREADY excluding VAT!
-  // (VAT is added separately in totalTax)
+  // CRITICAL: Shopify's subtotalPrice ALREADY has discounts subtracted!
+  // subtotalPrice = line item prices AFTER discounts but BEFORE tax/shipping
+  // So we should NOT subtract discounts again!
+
+  // Gross revenue = subtotal + shipping (subtotal already has discounts removed)
   const grossRevenue = simpleGrossRevenue(totalSubtotal, totalShippingRevenue)
 
-  // Net revenue = gross - discounts - refunds
-  const netRevenue = simpleNetRevenue(grossRevenue, totalDiscounts, totalRefunds)
+  // Net revenue = gross - refunds (NO discounts - already subtracted in subtotalPrice!)
+  const netRevenue = simpleNetRevenue(grossRevenue, 0, totalRefunds)
 
   // Revenue ex VAT (basis for profit calculation)
   // Since Shopify's subtotalPrice already EXCLUDES VAT, netRevenue IS the ex-VAT amount
-  // We do NOT subtract tax again - that would be double-counting!
-  const revenueExVat = netRevenue  // NOT: simpleRevenueExVat(netRevenue, totalTax)
+  const revenueExVat = netRevenue
 
   // Gross profit = Revenue ex VAT - COGS
   const grossProfit = simpleGrossProfit(revenueExVat, totalCOGS)
@@ -371,9 +372,9 @@ async function computeDashboardSummary(
   const totalCosts = totalTax + totalCOGS + totalShippingCost + totalPaymentFees + totalOperatingCosts
 
   // Final net profit after all costs (including VAT)
-  // Omsättning already includes: (subtotal - discounts + shipping + tax - refunds)
-  // So: Net Profit = Omsättning - All Costs
-  const omsattningBeforeCosts = totalSubtotal - totalDiscounts + totalShippingRevenue + totalTax - totalRefunds
+  // IMPORTANT: Shopify's subtotalPrice ALREADY has discounts subtracted!
+  // So: Omsättning = subtotalPrice + shipping + tax - refunds (NO discount subtraction!)
+  const omsattningBeforeCosts = totalSubtotal + totalShippingRevenue + totalTax - totalRefunds
   const finalNetProfit = omsattningBeforeCosts - totalCosts
   // Margin based on omsättning (what customer paid)
   const effectiveRevenue = omsattningBeforeCosts
@@ -462,12 +463,14 @@ async function computeDashboardSummary(
   // ===========================================
   // CALCULATE "OMSÄTTNING" (Swedish Revenue)
   // ===========================================
-  // Omsättning = Nettoförsäljning + Frakt + Moms
-  // Nettoförsäljning = Bruttoförsäljning - Rabatter
-  // So: Omsättning = (subtotal - discounts) + shipping + tax - refunds
+  // IMPORTANT: Shopify's subtotalPrice ALREADY has discounts subtracted!
+  // subtotalPrice = line item prices AFTER discounts (= Nettoförsäljning)
+  //
+  // So: Omsättning = subtotalPrice + shipping + tax - refunds
+  // We do NOT subtract discounts again - they're already deducted!
   //
   // This matches Shopify's "Omsättning" calculation exactly!
-  const omsattning = totalSubtotal - totalDiscounts + totalShippingRevenue + totalTax - totalRefunds
+  const omsattning = totalSubtotal + totalShippingRevenue + totalTax - totalRefunds
 
   return {
     summary: {

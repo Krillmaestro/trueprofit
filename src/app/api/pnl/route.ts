@@ -386,11 +386,13 @@ async function computePnLReport(
   // ===========================================
 
   // Revenue calculations
-  // IMPORTANT: Shopify's subtotalPrice is ALREADY excluding VAT!
+  // CRITICAL: Shopify's subtotalPrice ALREADY has discounts subtracted!
+  // subtotalPrice = line item prices AFTER discounts but BEFORE tax/shipping
   const grossRevenue = simpleGrossRevenue(totalSubtotal, totalShippingRevenue)
-  const netRevenue = simpleNetRevenue(grossRevenue, totalDiscounts, totalRefunds)
+  // Net revenue = gross - refunds (NO discounts - already subtracted in subtotalPrice!)
+  const netRevenue = simpleNetRevenue(grossRevenue, 0, totalRefunds)
   // Since Shopify's subtotalPrice already EXCLUDES VAT, netRevenue IS the ex-VAT amount
-  const revenueExVat = netRevenue  // NOT: simpleRevenueExVat(netRevenue, totalTax)
+  const revenueExVat = netRevenue
 
   // COGS = ONLY product costs (shipping is Operating Expense per Swedish accounting)
   const totalCOGS = productCosts
@@ -419,8 +421,9 @@ async function computePnLReport(
   // ===========================================
 
   // Calculate "Omsättning" (Swedish Revenue)
-  // Omsättning = (subtotal - discounts) + shipping + tax - refunds
-  const omsattning = totalSubtotal - totalDiscounts + totalShippingRevenue + totalTax - totalRefunds
+  // IMPORTANT: Shopify's subtotalPrice ALREADY has discounts subtracted!
+  // So: Omsättning = subtotalPrice + shipping + tax - refunds (NO discount subtraction!)
+  const omsattning = totalSubtotal + totalShippingRevenue + totalTax - totalRefunds
 
   return {
     period: periodName,
