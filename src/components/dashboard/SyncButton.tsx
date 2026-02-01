@@ -121,9 +121,9 @@ export function SyncButton({ onSyncComplete, dateFrom, dateTo }: SyncButtonProps
             size="sm"
             onClick={handleSync}
             disabled={syncing}
-            className={`gap-2 transition-all ${
+            className={`gap-2 transition-all border-slate-300 text-slate-700 hover:bg-slate-100 ${
               showResult && lastSyncResult?.summary.failed === 0
-                ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                ? 'border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
                 : ''
             }`}
           >

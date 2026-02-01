@@ -29,7 +29,9 @@ export function ComparisonToggle({ enabled, onToggle, className }: ComparisonTog
             onClick={() => onToggle(!enabled)}
             className={cn(
               'gap-2 transition-all',
-              enabled && 'bg-violet-600 hover:bg-violet-700',
+              enabled
+                ? 'bg-violet-600 hover:bg-violet-700'
+                : 'border-slate-300 text-slate-700 hover:bg-slate-100',
               className
             )}
           >
