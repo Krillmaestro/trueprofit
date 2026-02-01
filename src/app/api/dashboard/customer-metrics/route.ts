@@ -44,6 +44,8 @@ export async function GET(request: NextRequest) {
   const storeIds = stores.map(s => s.id)
 
   // Get all orders for customer analysis (all-time for LTV calculation)
+  // IMPORTANT: We use subtotalPrice + totalShippingPrice - totalDiscounts for correct revenue
+  // This matches Shopify's "Nettoförsäljning + Frakt" (ex VAT)
   const allOrders = await prisma.order.findMany({
     where: {
       storeId: { in: storeIds },
@@ -54,7 +56,10 @@ export async function GET(request: NextRequest) {
     select: {
       id: true,
       customerEmail: true,
-      totalPrice: true,
+      subtotalPrice: true,
+      totalShippingPrice: true,
+      totalDiscounts: true,
+      totalRefundAmount: true,
       processedAt: true,
     },
     orderBy: { processedAt: 'asc' },
@@ -71,7 +76,10 @@ export async function GET(request: NextRequest) {
     },
     select: {
       customerEmail: true,
-      totalPrice: true,
+      subtotalPrice: true,
+      totalShippingPrice: true,
+      totalDiscounts: true,
+      totalRefundAmount: true,
     },
   })
 
@@ -144,27 +152,45 @@ export async function GET(request: NextRequest) {
   const contributionMarginRatio = 1 - variableCostRatio
   const breakEvenRoasNewCustomers = contributionMarginRatio > 0 ? 1 / contributionMarginRatio : 2.0
 
+  // Helper function to calculate order revenue (matches Shopify's Nettoförsäljning + Frakt)
+  // This is revenue EXCLUDING VAT - the correct basis for LTV calculation
+  const calculateOrderRevenueExVat = (order: {
+    subtotalPrice: unknown
+    totalShippingPrice: unknown
+    totalDiscounts: unknown
+    totalRefundAmount?: unknown
+  }) => {
+    const subtotal = Number(order.subtotalPrice) || 0
+    const shipping = Number(order.totalShippingPrice) || 0
+    const discounts = Number(order.totalDiscounts) || 0
+    const refunds = Number(order.totalRefundAmount) || 0
+    // Nettoförsäljning = Bruttoförsäljning - Rabatter - Returer
+    // Revenue ex VAT = Nettoförsäljning + Frakt
+    return (subtotal - discounts - refunds) + shipping
+  }
+
   // Build customer data
   const customerData = new Map<string, {
     firstOrderDate: Date
     orders: number
-    totalRevenue: number
+    totalRevenue: number // Revenue ex VAT
   }>()
 
   for (const order of allOrders) {
     if (!order.customerEmail) continue
 
     const email = order.customerEmail.toLowerCase()
+    const orderRevenueExVat = calculateOrderRevenueExVat(order)
     const existing = customerData.get(email)
 
     if (existing) {
       existing.orders++
-      existing.totalRevenue += Number(order.totalPrice)
+      existing.totalRevenue += orderRevenueExVat
     } else {
       customerData.set(email, {
         firstOrderDate: order.processedAt || new Date(),
         orders: 1,
-        totalRevenue: Number(order.totalPrice),
+        totalRevenue: orderRevenueExVat,
       })
     }
   }
@@ -237,8 +263,8 @@ export async function GET(request: NextRequest) {
   // Average Order Value
   const aov = totalOrders > 0 ? totalRevenue / totalOrders : 0
 
-  // Period-specific revenue
-  const periodRevenue = periodOrders.reduce((sum, o) => sum + Number(o.totalPrice), 0)
+  // Period-specific revenue (ex VAT)
+  const periodRevenue = periodOrders.reduce((sum, o) => sum + calculateOrderRevenueExVat(o), 0)
 
   return NextResponse.json({
     metrics: {
@@ -267,9 +293,9 @@ export async function GET(request: NextRequest) {
       ltv,
       ltvCacRatio,
 
-      // Revenue
+      // Revenue (all ex VAT for correct LTV calculation)
       totalRevenueAllTime: totalRevenue,
-      periodRevenueCalc: periodOrders.reduce((sum, o) => sum + Number(o.totalPrice), 0),
+      periodRevenueCalc: periodRevenue,
 
       // Break-Even ROAS for new customers
       breakEvenRoasNewCustomers,
