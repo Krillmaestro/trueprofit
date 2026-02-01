@@ -140,6 +140,31 @@ export async function GET(request: NextRequest) {
       diff: sumTotalPrice - 1117206.70,
     },
 
+    // Check for orders by month to debug historical sync
+    ordersByMonth: await prisma.order.groupBy({
+      by: ['processedAt'],
+      where: {
+        storeId: { in: storeIds },
+        financialStatus: { in: ['paid', 'partially_paid', 'partially_refunded'] },
+        cancelledAt: null,
+      },
+      _count: true,
+      _sum: {
+        totalPrice: true,
+      },
+    }).then(data => {
+      // Group by year-month
+      const byMonth: Record<string, { count: number; total: number }> = {}
+      for (const d of data) {
+        if (!d.processedAt) continue
+        const key = d.processedAt.toISOString().substring(0, 7) // YYYY-MM
+        if (!byMonth[key]) byMonth[key] = { count: 0, total: 0 }
+        byMonth[key].count += d._count
+        byMonth[key].total += Number(d._sum.totalPrice) || 0
+      }
+      return byMonth
+    }),
+
     // Sample orders for inspection
     sampleOrders,
   })
