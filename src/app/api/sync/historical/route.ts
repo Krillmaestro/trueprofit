@@ -449,23 +449,24 @@ async function syncShopifyHistorical(
           },
         })
 
-        // Sync line items
-        for (const item of orderData.line_items || []) {
-          const variantId = item.variant_id
-            ? variantLookup.get(item.variant_id.toString()) || null
-            : null
-
-          const order = await prisma.order.findUnique({
-            where: {
-              storeId_shopifyOrderId: {
-                storeId: store.id,
-                shopifyOrderId: BigInt(orderData.id),
-              },
+        // Get the created/updated order for line items and refunds
+        const order = await prisma.order.findUnique({
+          where: {
+            storeId_shopifyOrderId: {
+              storeId: store.id,
+              shopifyOrderId: BigInt(orderData.id),
             },
-            select: { id: true },
-          })
+          },
+          select: { id: true },
+        })
 
-          if (order) {
+        if (order) {
+          // Sync line items
+          for (const item of orderData.line_items || []) {
+            const variantId = item.variant_id
+              ? variantLookup.get(item.variant_id.toString()) || null
+              : null
+
             await prisma.orderLineItem.upsert({
               where: {
                 orderId_shopifyLineItemId: {
@@ -493,6 +494,48 @@ async function syncShopifyHistorical(
                 price: parseFloat(item.price || '0'),
                 totalDiscount: parseFloat(item.total_discount || '0'),
               },
+            })
+          }
+
+          // Sync refunds
+          for (const refundData of orderData.refunds || []) {
+            const refundAmount = refundData.transactions?.reduce(
+              (sum: number, t: { amount: string }) => sum + parseFloat(t.amount || '0'),
+              0
+            ) || 0
+
+            await prisma.orderRefund.upsert({
+              where: {
+                orderId_shopifyRefundId: {
+                  orderId: order.id,
+                  shopifyRefundId: BigInt(refundData.id),
+                },
+              },
+              create: {
+                orderId: order.id,
+                shopifyRefundId: BigInt(refundData.id),
+                amount: refundAmount,
+                note: refundData.note || null,
+                restock: refundData.restock || false,
+                processedAt: new Date(refundData.created_at),
+              },
+              update: {
+                amount: refundAmount,
+                note: refundData.note || null,
+                restock: refundData.restock || false,
+              },
+            })
+          }
+
+          // Update order's total refund amount
+          const totalRefundAmount = (orderData.refunds || []).reduce((sum: number, r: { transactions?: Array<{ amount: string }> }) => {
+            return sum + (r.transactions?.reduce((tSum: number, t: { amount: string }) => tSum + parseFloat(t.amount || '0'), 0) || 0)
+          }, 0)
+
+          if (totalRefundAmount > 0) {
+            await prisma.order.update({
+              where: { id: order.id },
+              data: { totalRefundAmount },
             })
           }
         }
