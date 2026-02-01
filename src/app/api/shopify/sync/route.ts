@@ -432,7 +432,7 @@ async function syncOrders(storeId: string, client: ShopifyClient, sinceDate: Dat
           subtotalPrice: parseFloat(orderData.subtotal_price || '0'),
           totalTax: parseFloat(orderData.total_tax || '0'),
           totalDiscounts: parseFloat(orderData.total_discounts || '0'),
-          totalShippingPrice: 0, // Shipping handled via COGS, not synced from Shopify
+          totalShippingPrice: parseFloat(orderData.total_shipping_price_set?.shop_money?.amount || '0'),
           financialStatus: orderData.financial_status,
           fulfillmentStatus: orderData.fulfillment_status,
           processedAt: orderData.processed_at ? new Date(orderData.processed_at) : null,
@@ -452,7 +452,7 @@ async function syncOrders(storeId: string, client: ShopifyClient, sinceDate: Dat
           subtotalPrice: parseFloat(orderData.subtotal_price || '0'),
           totalTax: parseFloat(orderData.total_tax || '0'),
           totalDiscounts: parseFloat(orderData.total_discounts || '0'),
-          // totalShippingPrice not updated - handled via COGS
+          totalShippingPrice: parseFloat(orderData.total_shipping_price_set?.shop_money?.amount || '0'),
           financialStatus: orderData.financial_status,
           fulfillmentStatus: orderData.fulfillment_status,
           cancelledAt: orderData.cancelled_at ? new Date(orderData.cancelled_at) : null,

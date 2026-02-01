@@ -265,22 +265,48 @@ async function computeDashboardSummary(
   }
 
   // ===========================================
-  // USE CALCULATION ENGINE FOR FINAL NUMBERS
+  // SHOPIFY DATA STRUCTURE - CRITICAL UNDERSTANDING
+  // ===========================================
+  //
+  // Shopify API fields and what they mean (verified against Analytics):
+  //
+  // subtotal_price = BRUTTOFÖRSÄLJNING (line items BEFORE discounts, EXCL VAT)
+  //                  Example: 931,677.79 kr
+  //
+  // total_discounts = RABATTER (total discount amount)
+  //                   Example: 55,366.65 kr
+  //
+  // (calculated) NETTOFÖRSÄLJNING = subtotal_price - total_discounts - returer
+  //                                 = 931,677.79 - 55,366.65 - 7,744.73 = 868,566.41 kr
+  //
+  // total_shipping_price = FRAKTAVGIFTER (what customer paid for shipping)
+  //                        Example: 51,956.51 kr
+  //
+  // total_tax = SKATTER (VAT amount)
+  //             Example: 196,683.78 kr
+  //
+  // OMSÄTTNING = Nettoförsäljning + Fraktavgifter + Skatter
+  //            = 868,566.41 + 51,956.51 + 196,683.78 = 1,117,206.70 kr
+  //
   // ===========================================
 
-  // CRITICAL: Shopify's subtotalPrice ALREADY has discounts subtracted!
-  // subtotalPrice = line item prices AFTER discounts but BEFORE tax/shipping
-  // So we should NOT subtract discounts again!
+  // Calculate Nettoförsäljning (Net Sales)
+  // = Bruttoförsäljning - Rabatter - Returer
+  const nettoForsaljning = totalSubtotal - totalDiscounts - totalRefunds
 
-  // Gross revenue = subtotal + shipping (subtotal already has discounts removed)
-  const grossRevenue = simpleGrossRevenue(totalSubtotal, totalShippingRevenue)
+  // Calculate Omsättning (Revenue) - matches Shopify Analytics exactly
+  // = Nettoförsäljning + Fraktavgifter + Skatter
+  const omsattning = nettoForsaljning + totalShippingRevenue + totalTax
 
-  // Net revenue = gross - refunds (NO discounts - already subtracted in subtotalPrice!)
-  const netRevenue = simpleNetRevenue(grossRevenue, 0, totalRefunds)
+  // Revenue ex VAT for profit calculations
+  // = Nettoförsäljning + Fraktavgifter (without tax)
+  const revenueExVat = nettoForsaljning + totalShippingRevenue
 
-  // Revenue ex VAT (basis for profit calculation)
-  // Since Shopify's subtotalPrice already EXCLUDES VAT, netRevenue IS the ex-VAT amount
-  const revenueExVat = netRevenue
+  // Gross revenue (for internal calculations)
+  const grossRevenue = totalSubtotal + totalShippingRevenue
+
+  // Net revenue after discounts and refunds
+  const netRevenue = grossRevenue - totalDiscounts - totalRefunds
 
   // Gross profit = Revenue ex VAT - COGS
   const grossProfit = simpleGrossProfit(revenueExVat, totalCOGS)
@@ -288,7 +314,7 @@ async function computeDashboardSummary(
   // Net profit = Gross profit - Payment fees - Shipping cost
   const netProfit = simpleNetProfit(grossProfit, totalPaymentFees, totalShippingCost)
 
-  // Margins
+  // Margins based on revenue ex VAT
   const grossMargin = safeMargin(grossProfit, revenueExVat)
   const netMargin = safeMargin(netProfit, revenueExVat)
 
@@ -367,22 +393,29 @@ async function computeDashboardSummary(
   // Total operating costs
   const totalOperatingCosts = fixedCosts + variableCosts + salaries + oneTimeCosts + totalAdSpend
 
-  // Total costs = VAT + COGS + Shipping Cost + Payment Fees + Operating Costs
-  // VAT IS A COST - it's money that leaves your business to Skatteverket!
-  const totalCosts = totalTax + totalCOGS + totalShippingCost + totalPaymentFees + totalOperatingCosts
+  // ===========================================
+  // TOTAL COSTS CALCULATION
+  // ===========================================
+  // Total costs = COGS + Shipping Cost + Payment Fees + Operating Costs
+  // NOTE: VAT is NOT a cost for profit calculation - it's collected from customer
+  //       and paid to Skatteverket, it's a pass-through
+  const totalCosts = totalCOGS + totalShippingCost + totalPaymentFees + totalOperatingCosts
 
-  // Final net profit after all costs (including VAT)
-  // IMPORTANT: Shopify's subtotalPrice ALREADY has discounts subtracted!
-  // So: Omsättning = subtotalPrice + shipping + tax - refunds (NO discount subtraction!)
-  const omsattningBeforeCosts = totalSubtotal + totalShippingRevenue + totalTax - totalRefunds
-  const finalNetProfit = omsattningBeforeCosts - totalCosts
-  // Margin based on omsättning (what customer paid)
-  const effectiveRevenue = omsattningBeforeCosts
-  const finalNetMargin = safeMargin(finalNetProfit, effectiveRevenue)
+  // ===========================================
+  // FINAL NET PROFIT
+  // ===========================================
+  // Net Profit = Revenue ex VAT - Total Costs
+  // We use revenueExVat because VAT is a pass-through, not our revenue
+  const finalNetProfit = revenueExVat - totalCosts
 
-  // ROAS calculations (including VAT in variable costs)
+  // Margin based on revenue ex VAT (correct accounting)
+  const finalNetMargin = safeMargin(finalNetProfit, revenueExVat)
+
+  // ROAS calculations
   const roas = totalAdSpend > 0 ? adRevenue / totalAdSpend : 0
-  const breakEvenRoas = simpleBreakEvenROAS(effectiveRevenue, totalTax + totalCOGS + totalPaymentFees + totalShippingCost)
+  // Break-even ROAS based on variable costs as percentage of revenue
+  const variableCostsForRoas = totalCOGS + totalPaymentFees + totalShippingCost
+  const breakEvenRoas = simpleBreakEvenROAS(revenueExVat, variableCostsForRoas)
   const isAdsProfitable = roas >= breakEvenRoas
 
   // ===========================================
@@ -444,8 +477,9 @@ async function computeDashboardSummary(
   // BUILD COST BREAKDOWN
   // ===========================================
 
+  // Cost breakdown for visualization
+  // Note: VAT is NOT included here as it's a pass-through, not a real cost
   const costBreakdown = [
-    { name: 'Moms (VAT)', value: roundCurrency(totalTax), color: '#ef4444' },  // VAT är en kostnad!
     { name: 'COGS', value: roundCurrency(totalCOGS), color: '#3b82f6' },
     { name: 'Ad Spend', value: roundCurrency(totalAdSpend), color: '#8b5cf6' },
     { name: 'Fraktkostnad', value: roundCurrency(totalShippingCost), color: '#ec4899' },
@@ -460,54 +494,44 @@ async function computeDashboardSummary(
   // RETURN RESPONSE
   // ===========================================
 
-  // ===========================================
-  // CALCULATE "OMSÄTTNING" (Swedish Revenue)
-  // ===========================================
-  // IMPORTANT: Shopify's subtotalPrice ALREADY has discounts subtracted!
-  // subtotalPrice = line item prices AFTER discounts (= Nettoförsäljning)
-  //
-  // So: Omsättning = subtotalPrice + shipping + tax - refunds
-  // We do NOT subtract discounts again - they're already deducted!
-  //
-  // This matches Shopify's "Omsättning" calculation exactly!
-  const omsattning = totalSubtotal + totalShippingRevenue + totalTax - totalRefunds
-
   return {
     summary: {
-      // Revenue metrics
-      // "Omsättning" = what the customer actually paid (including VAT, after discounts)
-      revenue: roundCurrency(omsattning), // Alias for backward compatibility
-      grossRevenue: roundCurrency(omsattning), // This is "Omsättning" - total revenue incl VAT
-      revenueExVat: roundCurrency(revenueExVat),
+      // Revenue metrics - matching Shopify Analytics exactly
+      // "Omsättning" = Nettoförsäljning + Frakt + Moms
+      revenue: roundCurrency(omsattning), // Omsättning (matches Shopify)
+      grossRevenue: roundCurrency(omsattning), // Same as revenue for backward compatibility
+      revenueExVat: roundCurrency(revenueExVat), // Omsättning minus moms
       netRevenue: roundCurrency(netRevenue),
       tax: roundCurrency(totalTax),
 
       // Cost metrics
-      costs: roundCurrency(totalCosts), // Alias for backward compatibility
+      costs: roundCurrency(totalCosts),
       totalCosts: roundCurrency(totalCosts),
 
       // Profit metrics
       grossProfit: roundCurrency(grossProfit),
-      profit: roundCurrency(finalNetProfit), // Alias for backward compatibility
+      profit: roundCurrency(finalNetProfit),
       netProfit: roundCurrency(finalNetProfit),
-      margin: roundPercentage(finalNetMargin), // Alias for backward compatibility
+      margin: roundPercentage(finalNetMargin),
       grossMargin: roundPercentage(grossMargin),
       netMargin: roundPercentage(finalNetMargin),
 
       // Order metrics
       orders: orders.length,
-      avgOrderValue: orders.length > 0 ? roundCurrency(revenueExVat / orders.length) : 0,
+      avgOrderValue: orders.length > 0 ? roundCurrency(omsattning / orders.length) : 0,
     },
     breakdown: {
       revenue: {
-        gross: roundCurrency(omsattning), // "Omsättning" - total revenue incl VAT, after discounts
-        subtotal: roundCurrency(totalSubtotal), // Bruttoförsäljning (before discounts, excl VAT)
-        shipping: roundCurrency(totalShippingRevenue),
-        discounts: roundCurrency(totalDiscounts),
-        refunds: roundCurrency(totalRefunds),
-        tax: roundCurrency(totalTax),
-        exVat: roundCurrency(revenueExVat), // Nettoomsättning (after discounts, excl VAT)
-        net: roundCurrency(netRevenue), // Net revenue (subtotal + shipping - discounts - refunds)
+        // Shopify terminology mapping:
+        gross: roundCurrency(omsattning), // Omsättning (total inkl moms)
+        subtotal: roundCurrency(totalSubtotal), // Bruttoförsäljning (före rabatter)
+        shipping: roundCurrency(totalShippingRevenue), // Fraktavgifter
+        discounts: roundCurrency(totalDiscounts), // Rabatter
+        refunds: roundCurrency(totalRefunds), // Returer
+        tax: roundCurrency(totalTax), // Skatter (moms)
+        netSales: roundCurrency(nettoForsaljning), // Nettoförsäljning (Brutto - Rabatter - Returer)
+        exVat: roundCurrency(revenueExVat), // Nettoförsäljning + Frakt (utan moms)
+        net: roundCurrency(netRevenue),
       },
       costs: {
         cogs: roundCurrency(totalCOGS),
