@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useMemo, memo } from 'react'
 import { cn } from '@/lib/utils'
 import { GlowCard } from './GlowCard'
 import {
@@ -23,7 +23,7 @@ interface NetProfitHeroCardProps {
   className?: string
 }
 
-export function NetProfitHeroCard({
+export const NetProfitHeroCard = memo(function NetProfitHeroCard({
   revenue,
   costs,
   profit,
@@ -122,8 +122,8 @@ export function NetProfitHeroCard({
         {/* Header */}
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur flex items-center justify-center">
-              <TrendingUp className="w-5 h-5 text-white" />
+            <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur flex items-center justify-center" aria-hidden="true">
+              <TrendingUp className="w-5 h-5 text-white" aria-label="Nettovinst trend" />
             </div>
             <div>
               <h3 className="font-semibold text-white/90">Nettovinst</h3>
@@ -220,4 +220,4 @@ export function NetProfitHeroCard({
       </div>
     </div>
   )
-}
+})

@@ -1,5 +1,6 @@
 'use client'
 
+import { memo } from 'react'
 import { cn } from '@/lib/utils'
 import { LucideIcon, TrendingUp, TrendingDown, Minus } from 'lucide-react'
 import { GlowCard } from './GlowCard'
@@ -21,7 +22,7 @@ interface StatCardProps {
   decimals?: number  // Number of decimal places to show
 }
 
-export function StatCard({
+export const StatCard = memo(function StatCard({
   title,
   value,
   previousValue,
@@ -52,11 +53,11 @@ export function StatCard({
       <GlowCard className={cn('p-5', compact && 'p-4')} hover={false}>
         <div className="animate-pulse">
           <div className="flex items-center justify-between mb-3">
-            <div className="h-4 bg-slate-200 rounded w-20" />
-            {Icon && <div className="h-10 w-10 bg-slate-200 rounded-xl" />}
+            <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-20" />
+            {Icon && <div className="h-10 w-10 bg-slate-200 dark:bg-slate-700 rounded-xl" />}
           </div>
-          <div className="h-8 bg-slate-200 rounded w-28 mb-2" />
-          <div className="h-4 bg-slate-200 rounded w-16" />
+          <div className="h-8 bg-slate-200 dark:bg-slate-700 rounded w-28 mb-2" />
+          <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-16" />
         </div>
       </GlowCard>
     )
@@ -67,11 +68,11 @@ export function StatCard({
       <div className="flex items-start justify-between">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-2">
-            <span className="text-sm font-medium text-slate-500 truncate">{title}</span>
+            <span className="text-sm font-medium text-slate-500 dark:text-slate-400 truncate">{title}</span>
           </div>
 
           <div className="flex items-baseline gap-1">
-            <span className="text-2xl font-bold text-slate-800 tracking-tight">
+            <span className="text-2xl font-bold text-slate-800 dark:text-slate-100 tracking-tight">
               <AnimatedNumber
                 value={value}
                 prefix={prefix}
@@ -90,9 +91,9 @@ export function StatCard({
               <div
                 className={cn(
                   'flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-xs font-medium',
-                  isPositive && 'bg-emerald-50 text-emerald-700',
-                  isNegative && 'bg-rose-50 text-rose-700',
-                  !isPositive && !isNegative && 'bg-slate-100 text-slate-600'
+                  isPositive && 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
+                  isNegative && 'bg-rose-50 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400',
+                  !isPositive && !isNegative && 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
                 )}
               >
                 {isPositive ? (
@@ -104,15 +105,15 @@ export function StatCard({
                 )}
                 <span>{Math.abs(change).toFixed(1)}%</span>
               </div>
-              <span className="text-xs text-slate-400">vs last period</span>
+              <span className="text-xs text-slate-400 dark:text-slate-500">vs last period</span>
             </div>
           )}
         </div>
 
         <div className="flex flex-col items-end gap-2">
           {Icon && (
-            <div className={cn('p-2.5 rounded-xl', iconBgColor)}>
-              <Icon className={cn('w-5 h-5', iconColor)} />
+            <div className={cn('p-2.5 rounded-xl', iconBgColor)} aria-hidden="true">
+              <Icon className={cn('w-5 h-5', iconColor)} aria-label={`${title} ikon`} />
             </div>
           )}
           {trend && trend.length > 1 && (
@@ -122,4 +123,4 @@ export function StatCard({
       </div>
     </GlowCard>
   )
-}
+})

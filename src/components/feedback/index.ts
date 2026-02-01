@@ -43,3 +43,10 @@ export {
   WarningAlert,
   DataQualityWarning,
 } from './ErrorState'
+
+// Error Boundary
+export {
+  ErrorBoundary,
+  withErrorBoundary,
+  ErrorFallback,
+} from './ErrorBoundary'

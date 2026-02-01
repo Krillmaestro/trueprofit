@@ -3,9 +3,10 @@
 /**
  * MetricCard Component
  * Clean, minimal design inspired by Linear/Stripe
+ * Optimized with React.memo for performance
  */
 
-import { ReactNode } from 'react'
+import { ReactNode, memo } from 'react'
 import { TrendingUp, TrendingDown, Minus, Info } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
@@ -104,7 +105,7 @@ function getTrendColor(direction: TrendDirection, variant: MetricVariant): strin
 // MAIN COMPONENT
 // ===========================================
 
-export function MetricCard({
+export const MetricCard = memo(function MetricCard({
   label,
   value,
   formattedValue,
@@ -209,8 +210,11 @@ export function MetricCard({
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <button className="text-slate-400 hover:text-slate-600 transition-colors">
-                    <Info className="w-4 h-4" />
+                  <button
+                    className="text-slate-400 hover:text-slate-600 transition-colors"
+                    aria-label={`Mer information om ${label}`}
+                  >
+                    <Info className="w-4 h-4" aria-hidden="true" />
                   </button>
                 </TooltipTrigger>
                 <TooltipContent>
@@ -235,7 +239,7 @@ export function MetricCard({
       {/* Change indicator */}
       {change !== undefined && (
         <div className="flex items-center gap-1.5 mt-2">
-          <TrendIcon className={cn(config.iconSize, trendColor)} />
+          <TrendIcon className={cn(config.iconSize, trendColor)} aria-hidden="true" />
           <span className={cn('font-medium', config.changeSize, trendColor)}>
             {change > 0 && '+'}
             {change.toFixed(1)}%
@@ -247,7 +251,7 @@ export function MetricCard({
       )}
     </div>
   )
-}
+})
 
 // ===========================================
 // SPECIALIZED VARIANTS
@@ -293,7 +297,7 @@ interface HeroMetricCardProps {
   className?: string
 }
 
-export function HeroMetricCard({
+export const HeroMetricCard = memo(function HeroMetricCard({
   label,
   value,
   formattedValue,
@@ -358,7 +362,7 @@ export function HeroMetricCard({
       <div className="flex items-center gap-3">
         {change !== undefined && (
           <div className="flex items-center gap-1">
-            <TrendIcon className={cn('w-4 h-4', trendColor)} />
+            <TrendIcon className={cn('w-4 h-4', trendColor)} aria-hidden="true" />
             <span className={cn('text-sm font-medium', trendColor)}>
               {change > 0 && '+'}
               {change.toFixed(1)}%
@@ -372,7 +376,7 @@ export function HeroMetricCard({
       </div>
     </div>
   )
-}
+})
 
 // ===========================================
 // METRIC CARD GRID
