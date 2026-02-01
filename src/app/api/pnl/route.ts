@@ -386,9 +386,11 @@ async function computePnLReport(
   // ===========================================
 
   // Revenue calculations
+  // IMPORTANT: Shopify's subtotalPrice is ALREADY excluding VAT!
   const grossRevenue = simpleGrossRevenue(totalSubtotal, totalShippingRevenue)
   const netRevenue = simpleNetRevenue(grossRevenue, totalDiscounts, totalRefunds)
-  const revenueExVat = simpleRevenueExVat(netRevenue, totalTax)
+  // Since Shopify's subtotalPrice already EXCLUDES VAT, netRevenue IS the ex-VAT amount
+  const revenueExVat = netRevenue  // NOT: simpleRevenueExVat(netRevenue, totalTax)
 
   // COGS = ONLY product costs (shipping is Operating Expense per Swedish accounting)
   const totalCOGS = productCosts

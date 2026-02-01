@@ -268,14 +268,18 @@ async function computeDashboardSummary(
   // USE CALCULATION ENGINE FOR FINAL NUMBERS
   // ===========================================
 
-  // Gross revenue = subtotal + shipping (what customer paid before tax)
+  // Gross revenue = subtotal + shipping
+  // IMPORTANT: Shopify's subtotalPrice is ALREADY excluding VAT!
+  // (VAT is added separately in totalTax)
   const grossRevenue = simpleGrossRevenue(totalSubtotal, totalShippingRevenue)
 
   // Net revenue = gross - discounts - refunds
   const netRevenue = simpleNetRevenue(grossRevenue, totalDiscounts, totalRefunds)
 
   // Revenue ex VAT (basis for profit calculation)
-  const revenueExVat = simpleRevenueExVat(netRevenue, totalTax)
+  // Since Shopify's subtotalPrice already EXCLUDES VAT, netRevenue IS the ex-VAT amount
+  // We do NOT subtract tax again - that would be double-counting!
+  const revenueExVat = netRevenue  // NOT: simpleRevenueExVat(netRevenue, totalTax)
 
   // Gross profit = Revenue ex VAT - COGS
   const grossProfit = simpleGrossProfit(revenueExVat, totalCOGS)

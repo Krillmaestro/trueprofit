@@ -170,9 +170,9 @@ export function NetProfitHeroCard({
         {/* Flow visualization */}
         <div className="bg-white/10 backdrop-blur rounded-xl p-4 mb-4">
           <div className="flex items-center justify-between gap-2">
-            {/* Revenue */}
+            {/* Revenue ex VAT - for correct math */}
             <div className="flex-1 text-center">
-              <div className="text-xs text-white/60 mb-1">Omsättning</div>
+              <div className="text-xs text-white/60 mb-1">Nettoomsättning</div>
               <div className="text-lg font-bold text-white">{formatCurrency(revenue)} kr</div>
             </div>
 

@@ -372,9 +372,9 @@ export default function DashboardPage() {
 
       {/* HERO SECTION - Net Profit + Break-Even ROAS */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Net Profit Hero - Improved */}
+        {/* Net Profit Hero - Uses revenueExVat for correct math */}
         <NetProfitHeroCard
-          revenue={data.summary.revenue}
+          revenue={data.summary.revenueExVat || data.breakdown.revenue.exVat || (data.summary.revenue - (data.summary.tax || 0))}
           costs={data.breakdown.costs.total}
           profit={data.summary.profit}
           margin={data.summary.margin}
@@ -581,9 +581,9 @@ export default function DashboardPage() {
             <div className="h-8 w-px bg-slate-200 hidden md:block" />
             <div className="flex items-center gap-8">
               <div>
-                <div className="text-xs text-slate-400">Omsättning</div>
+                <div className="text-xs text-slate-400">Nettoomsättning</div>
                 <div className="text-lg font-bold text-slate-800">
-                  {data.summary.revenue.toLocaleString('sv-SE')} kr
+                  {(data.summary.revenueExVat || data.breakdown.revenue.exVat || (data.summary.revenue - (data.summary.tax || 0))).toLocaleString('sv-SE')} kr
                 </div>
               </div>
               <div className="text-slate-300 text-2xl">→</div>
