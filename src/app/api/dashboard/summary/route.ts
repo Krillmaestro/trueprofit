@@ -363,19 +363,24 @@ async function computeDashboardSummary(
   const totalAdSpend = toNumber(adSpend._sum.spend)
   const adRevenue = toNumber(adSpend._sum.revenue)
 
-  // Total operating costs (EXCLUDING VAT - VAT is pass-through)
+  // Total operating costs
   const totalOperatingCosts = fixedCosts + variableCosts + salaries + oneTimeCosts + totalAdSpend
 
-  // Total costs = COGS + Shipping Cost + Payment Fees + Operating Costs
-  const totalCosts = totalCOGS + totalShippingCost + totalPaymentFees + totalOperatingCosts
+  // Total costs = VAT + COGS + Shipping Cost + Payment Fees + Operating Costs
+  // VAT IS A COST - it's money that leaves your business to Skatteverket!
+  const totalCosts = totalTax + totalCOGS + totalShippingCost + totalPaymentFees + totalOperatingCosts
 
-  // Final net profit after all costs
-  const finalNetProfit = revenueExVat - totalCosts
-  const finalNetMargin = safeMargin(finalNetProfit, revenueExVat)
+  // Final net profit after all costs (including VAT)
+  // Revenue (grossRevenue + tax) - All Costs (including VAT) = What's left
+  const grossRevenueWithVat = grossRevenue + totalTax
+  const finalNetProfit = grossRevenueWithVat - totalRefunds - totalDiscounts - totalCosts
+  // Margin based on gross revenue (what customer paid)
+  const effectiveRevenue = grossRevenueWithVat - totalRefunds - totalDiscounts
+  const finalNetMargin = safeMargin(finalNetProfit, effectiveRevenue)
 
-  // ROAS calculations
+  // ROAS calculations (including VAT in variable costs)
   const roas = totalAdSpend > 0 ? adRevenue / totalAdSpend : 0
-  const breakEvenRoas = simpleBreakEvenROAS(revenueExVat, totalCOGS + totalPaymentFees + totalShippingCost)
+  const breakEvenRoas = simpleBreakEvenROAS(effectiveRevenue, totalTax + totalCOGS + totalPaymentFees + totalShippingCost)
   const isAdsProfitable = roas >= breakEvenRoas
 
   // ===========================================
