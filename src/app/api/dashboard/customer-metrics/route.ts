@@ -196,6 +196,9 @@ export async function GET(request: NextRequest) {
   }
 
   // Count customers in period
+  // IMPORTANT: Shopify's "Returning customer rate" is:
+  // = Returning customers in period / Total customers in period
+  // Where "returning" means they had ordered BEFORE this period
   const periodCustomers = new Set<string>()
   const newCustomersInPeriod = new Set<string>()
   const returningCustomersInPeriod = new Set<string>()
@@ -208,11 +211,14 @@ export async function GET(request: NextRequest) {
 
     const customerInfo = customerData.get(email)
     if (customerInfo) {
-      // Check if first order was in current period
-      if (customerInfo.firstOrderDate >= dateFilter.gte && customerInfo.firstOrderDate <= dateFilter.lte) {
-        newCustomersInPeriod.add(email)
-      } else {
+      // Check if first order was BEFORE this period (returning customer)
+      // Or IN this period (new customer)
+      if (customerInfo.firstOrderDate < dateFilter.gte) {
+        // First order was before this period = returning customer
         returningCustomersInPeriod.add(email)
+      } else {
+        // First order was in this period = new customer
+        newCustomersInPeriod.add(email)
       }
     }
   }
@@ -223,7 +229,7 @@ export async function GET(request: NextRequest) {
   const newCustomers = newCustomersInPeriod.size
   const returningCustomers = returningCustomersInPeriod.size
 
-  // Repeat rate = customers with more than 1 order / total customers
+  // All-time metrics for repeat buyers
   let customersWithMultipleOrders = 0
   let totalOrdersFromRepeaters = 0
   let totalRevenue = 0
@@ -238,7 +244,16 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  const repeatRate = totalCustomersAllTime > 0
+  // PERIOD-SPECIFIC repeat rate (matches Shopify Analytics)
+  // Shopify formula: Returning customers / Total customers in period
+  // Example: 305 returning / (1549 new + 305 returning) = 45.93%
+  // This shows what % of THIS PERIOD's customers are returning
+  const repeatRate = customersInPeriod > 0
+    ? (returningCustomers / customersInPeriod) * 100
+    : 0
+
+  // Also calculate all-time repeat rate for reference
+  const repeatRateAllTime = totalCustomersAllTime > 0
     ? (customersWithMultipleOrders / totalCustomersAllTime) * 100
     : 0
 
@@ -275,8 +290,10 @@ export async function GET(request: NextRequest) {
       returningCustomers,
       customersWithMultipleOrders,
 
-      // Rates
+      // Rates - PERIOD-SPECIFIC (matches Shopify Analytics)
+      // repeatRate = Returning customers in period / Total customers in period
       repeatRate,
+      repeatRateAllTime, // All-time repeat rate for reference
       newVsReturningRatio: customersInPeriod > 0
         ? (newCustomers / customersInPeriod) * 100
         : 0,
