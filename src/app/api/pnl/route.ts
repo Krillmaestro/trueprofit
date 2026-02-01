@@ -221,6 +221,7 @@ async function computePnLReport(
   // CALCULATE REVENUE BREAKDOWN
   // ===========================================
 
+  let totalOmsattning = 0  // USE total_price DIRECTLY from Shopify = Omsättning
   let totalSubtotal = 0
   let totalShippingRevenue = 0
   let totalTax = 0
@@ -235,12 +236,15 @@ async function computePnLReport(
   const paymentFeesByGateway: Record<string, number> = {}
 
   for (const order of orders) {
+    // CRITICAL: Use totalPrice directly - this IS Shopify's "Omsättning"
+    const omsattning = toNumber(order.totalPrice)
     const subtotal = toNumber(order.subtotalPrice)
     const shippingRevenue = toNumber(order.totalShippingPrice)
     const tax = toNumber(order.totalTax)
     const discounts = toNumber(order.totalDiscounts)
     const orderDate = order.processedAt ?? order.createdAt
 
+    totalOmsattning += omsattning
     totalSubtotal += subtotal
     totalShippingRevenue += shippingRevenue
     totalTax += tax
@@ -382,28 +386,24 @@ async function computePnLReport(
   const totalAdSpend = Object.values(adSpendByPlatform).reduce((sum, v) => sum + v, 0)
 
   // ===========================================
-  // REVENUE CALCULATIONS - USER REQUEST: MOMS SOM KOSTNAD
+  // REVENUE CALCULATIONS - USE TOTAL_PRICE DIRECTLY
   // ===========================================
   //
+  // CRITICAL FIX: Shopify's total_price IS "Omsättning" directly!
+  // Do NOT calculate from parts - use total_price.
+  //
   // Användarens önskan:
-  // - Revenue = Omsättning INKL moms (vad vi får in från Shopify)
+  // - Revenue = Omsättning INKL moms (total_price from Shopify)
   // - Moms = en KOSTNAD (inte pass-through)
   // - Nettovinst = Omsättning - Moms - alla andra kostnader
   //
-  // Shopify API fields:
-  // - subtotal_price = BRUTTOFÖRSÄLJNING (line items BEFORE discounts)
-  // - total_discounts = RABATTER
-  // - total_tax = SKATTER (VAT)
-  // - total_shipping_price = FRAKTAVGIFTER
-  //
   // ===========================================
 
-  // Calculate Nettoförsäljning (Net Sales) - before shipping and VAT
-  const nettoForsaljning = totalSubtotal - totalDiscounts - totalRefunds
+  // OMSÄTTNING - Use totalPrice DIRECTLY from Shopify (already accumulated above)
+  const omsattning = totalOmsattning
 
-  // Calculate Omsättning (matches Shopify Analytics) - THIS IS OUR REVENUE
-  // Omsättning = Nettoförsäljning + Frakt + Moms
-  const omsattning = nettoForsaljning + totalShippingRevenue + totalTax
+  // Calculate Nettoförsäljning (Net Sales) for breakdown display
+  const nettoForsaljning = totalSubtotal - totalDiscounts - totalRefunds
 
   // Revenue ex VAT (for reference)
   const revenueExVat = nettoForsaljning + totalShippingRevenue

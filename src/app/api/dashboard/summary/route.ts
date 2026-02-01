@@ -180,6 +180,7 @@ async function computeDashboardSummary(
   // CALCULATE METRICS USING CALCULATION ENGINE
   // ===========================================
 
+  let totalOmsattning = 0  // USE total_price DIRECTLY from Shopify = Omsättning
   let totalSubtotal = 0
   let totalShippingRevenue = 0
   let totalTax = 0
@@ -192,12 +193,15 @@ async function computeDashboardSummary(
   let totalLineItems = 0
 
   for (const order of orders) {
+    // CRITICAL: Use totalPrice directly - this IS Shopify's "Omsättning"
+    const omsattning = toNumber(order.totalPrice)
     const subtotal = toNumber(order.subtotalPrice)
     const shippingRevenue = toNumber(order.totalShippingPrice)
     const tax = toNumber(order.totalTax)
     const discounts = toNumber(order.totalDiscounts)
     const orderDate = order.processedAt ?? order.createdAt
 
+    totalOmsattning += omsattning
     totalSubtotal += subtotal
     totalShippingRevenue += shippingRevenue
     totalTax += tax
@@ -265,38 +269,29 @@ async function computeDashboardSummary(
   }
 
   // ===========================================
-  // SHOPIFY DATA STRUCTURE - CRITICAL UNDERSTANDING
+  // SHOPIFY DATA STRUCTURE - USING TOTAL_PRICE DIRECTLY
   // ===========================================
   //
-  // Shopify API fields and what they mean (verified against Analytics):
+  // CRITICAL FIX: Shopify's total_price IS the "Omsättning" directly!
+  // We should NOT calculate it from parts - just use total_price.
   //
-  // subtotal_price = BRUTTOFÖRSÄLJNING (line items BEFORE discounts, EXCL VAT)
-  //                  Example: 931,677.79 kr
+  // total_price = OMSÄTTNING (what customer actually paid)
+  //               This is the authoritative value from Shopify.
   //
-  // total_discounts = RABATTER (total discount amount)
-  //                   Example: 55,366.65 kr
-  //
-  // (calculated) NETTOFÖRSÄLJNING = subtotal_price - total_discounts - returer
-  //                                 = 931,677.79 - 55,366.65 - 7,744.73 = 868,566.41 kr
-  //
-  // total_shipping_price = FRAKTAVGIFTER (what customer paid for shipping)
-  //                        Example: 51,956.51 kr
-  //
-  // total_tax = SKATTER (VAT amount)
-  //             Example: 196,683.78 kr
-  //
-  // OMSÄTTNING = Nettoförsäljning + Fraktavgifter + Skatter
-  //            = 868,566.41 + 51,956.51 + 196,683.78 = 1,117,206.70 kr
+  // The other fields are for breakdown purposes only:
+  // - subtotal_price = Line items before discounts
+  // - total_discounts = Discount amount
+  // - total_tax = VAT
+  // - total_shipping_price = Shipping fee
   //
   // ===========================================
 
-  // Calculate Nettoförsäljning (Net Sales)
+  // OMSÄTTNING - Use totalPrice DIRECTLY from Shopify (already accumulated above)
+  const omsattning = totalOmsattning
+
+  // Calculate Nettoförsäljning (Net Sales) for breakdown display
   // = Bruttoförsäljning - Rabatter - Returer
   const nettoForsaljning = totalSubtotal - totalDiscounts - totalRefunds
-
-  // Calculate Omsättning (Revenue) - matches Shopify Analytics exactly
-  // = Nettoförsäljning + Fraktavgifter + Skatter
-  const omsattning = nettoForsaljning + totalShippingRevenue + totalTax
 
   // Revenue ex VAT for profit calculations
   // = Nettoförsäljning + Fraktavgifter (without tax)
