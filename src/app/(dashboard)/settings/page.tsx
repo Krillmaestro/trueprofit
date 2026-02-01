@@ -2,7 +2,8 @@
 
 import Link from 'next/link'
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Store, Users, CreditCard, Bell, User, Shield, Truck } from 'lucide-react'
+import { Store, Users, CreditCard, Bell, User, Shield, Truck, History } from 'lucide-react'
+import { HistoricalSyncCard } from '@/components/dashboard/HistoricalSyncCard'
 
 const settingsLinks = [
   {
@@ -56,6 +57,9 @@ export default function SettingsPage() {
         <h1 className="text-2xl font-bold text-slate-800">Settings</h1>
         <p className="text-slate-600">Manage your account and preferences</p>
       </div>
+
+      {/* Historical Sync Card - Prominent placement */}
+      <HistoricalSyncCard />
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {settingsLinks.map((link) => (

@@ -418,6 +418,10 @@ async function computePnLReport(
   // BUILD P&L STRUCTURE
   // ===========================================
 
+  // Calculate "Omsättning" (Swedish Revenue)
+  // Omsättning = (subtotal - discounts) + shipping + tax - refunds
+  const omsattning = totalSubtotal - totalDiscounts + totalShippingRevenue + totalTax - totalRefunds
+
   return {
     period: periodName,
     dateRange: {
@@ -428,9 +432,9 @@ async function computePnLReport(
     // Revenue Section
     revenue: {
       // Line items
-      grossSales: roundCurrency(totalSubtotal + totalTax),
+      grossSales: roundCurrency(totalSubtotal + totalTax), // Bruttoförsäljning (before discounts, incl VAT)
       shippingRevenue: roundCurrency(totalShippingRevenue),
-      grossRevenue: roundCurrency(grossRevenue + totalTax), // Matches Shopify "Omsättning"
+      grossRevenue: roundCurrency(omsattning), // "Omsättning" - matches Shopify exactly
 
       // Deductions
       discounts: roundCurrency(-totalDiscounts),

@@ -371,11 +371,12 @@ async function computeDashboardSummary(
   const totalCosts = totalTax + totalCOGS + totalShippingCost + totalPaymentFees + totalOperatingCosts
 
   // Final net profit after all costs (including VAT)
-  // Revenue (grossRevenue + tax) - All Costs (including VAT) = What's left
-  const grossRevenueWithVat = grossRevenue + totalTax
-  const finalNetProfit = grossRevenueWithVat - totalRefunds - totalDiscounts - totalCosts
-  // Margin based on gross revenue (what customer paid)
-  const effectiveRevenue = grossRevenueWithVat - totalRefunds - totalDiscounts
+  // Omsättning already includes: (subtotal - discounts + shipping + tax - refunds)
+  // So: Net Profit = Omsättning - All Costs
+  const omsattningBeforeCosts = totalSubtotal - totalDiscounts + totalShippingRevenue + totalTax - totalRefunds
+  const finalNetProfit = omsattningBeforeCosts - totalCosts
+  // Margin based on omsättning (what customer paid)
+  const effectiveRevenue = omsattningBeforeCosts
   const finalNetMargin = safeMargin(finalNetProfit, effectiveRevenue)
 
   // ROAS calculations (including VAT in variable costs)
@@ -458,11 +459,22 @@ async function computeDashboardSummary(
   // RETURN RESPONSE
   // ===========================================
 
+  // ===========================================
+  // CALCULATE "OMSÄTTNING" (Swedish Revenue)
+  // ===========================================
+  // Omsättning = Nettoförsäljning + Frakt + Moms
+  // Nettoförsäljning = Bruttoförsäljning - Rabatter
+  // So: Omsättning = (subtotal - discounts) + shipping + tax - refunds
+  //
+  // This matches Shopify's "Omsättning" calculation exactly!
+  const omsattning = totalSubtotal - totalDiscounts + totalShippingRevenue + totalTax - totalRefunds
+
   return {
     summary: {
       // Revenue metrics
-      revenue: roundCurrency(grossRevenue + totalTax), // Alias for backward compatibility
-      grossRevenue: roundCurrency(grossRevenue + totalTax), // Include VAT for "Omsättning"
+      // "Omsättning" = what the customer actually paid (including VAT, after discounts)
+      revenue: roundCurrency(omsattning), // Alias for backward compatibility
+      grossRevenue: roundCurrency(omsattning), // This is "Omsättning" - total revenue incl VAT
       revenueExVat: roundCurrency(revenueExVat),
       netRevenue: roundCurrency(netRevenue),
       tax: roundCurrency(totalTax),
@@ -485,14 +497,14 @@ async function computeDashboardSummary(
     },
     breakdown: {
       revenue: {
-        gross: roundCurrency(grossRevenue + totalTax),
-        subtotal: roundCurrency(totalSubtotal),
+        gross: roundCurrency(omsattning), // "Omsättning" - total revenue incl VAT, after discounts
+        subtotal: roundCurrency(totalSubtotal), // Bruttoförsäljning (before discounts, excl VAT)
         shipping: roundCurrency(totalShippingRevenue),
         discounts: roundCurrency(totalDiscounts),
         refunds: roundCurrency(totalRefunds),
         tax: roundCurrency(totalTax),
-        exVat: roundCurrency(revenueExVat),
-        net: roundCurrency(netRevenue),
+        exVat: roundCurrency(revenueExVat), // Nettoomsättning (after discounts, excl VAT)
+        net: roundCurrency(netRevenue), // Net revenue (subtotal + shipping - discounts - refunds)
       },
       costs: {
         cogs: roundCurrency(totalCOGS),

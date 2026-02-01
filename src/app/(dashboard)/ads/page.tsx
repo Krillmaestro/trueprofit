@@ -32,7 +32,11 @@ import {
   AlertCircle,
   CheckCircle,
   Loader2,
+  History,
+  Calendar,
 } from 'lucide-react'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 
 // Platform icons
 const FacebookIcon = () => (
@@ -113,6 +117,8 @@ function AdsPageContent() {
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState<string | null>(null)
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+  const [historicalSyncDialog, setHistoricalSyncDialog] = useState<AdAccount | null>(null)
+  const [historicalSyncDate, setHistoricalSyncDate] = useState('2024-08-01')
 
   // Check for OAuth callback messages
   useEffect(() => {
@@ -176,25 +182,31 @@ function AdsPageContent() {
     }
   }
 
-  const handleSync = async (accountId: string) => {
+  const handleSync = async (accountId: string, dateFrom?: string) => {
     setSyncing(accountId)
     try {
       const today = new Date()
-      const thirtyDaysAgo = new Date(today)
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+      const defaultDateFrom = new Date(today)
+      defaultDateFrom.setDate(defaultDateFrom.getDate() - 30)
 
       const response = await fetch('/api/ads/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           adAccountId: accountId,
-          dateFrom: thirtyDaysAgo.toISOString().split('T')[0],
+          dateFrom: dateFrom || defaultDateFrom.toISOString().split('T')[0],
           dateTo: today.toISOString().split('T')[0],
         }),
       })
 
       if (response.ok) {
-        setNotification({ type: 'success', message: 'Sync completed successfully!' })
+        const data = await response.json()
+        setNotification({
+          type: 'success',
+          message: dateFrom
+            ? `Historisk synk klar! Synkade ${data.syncedCount} poster från ${dateFrom}.`
+            : 'Synkronisering klar!'
+        })
         fetchData() // Refresh data
       } else {
         const error = await response.json()
@@ -206,6 +218,11 @@ function AdsPageContent() {
       setSyncing(null)
       setTimeout(() => setNotification(null), 5000)
     }
+  }
+
+  const handleHistoricalSync = (account: AdAccount) => {
+    handleSync(account.id, historicalSyncDate)
+    setHistoricalSyncDialog(null)
   }
 
   const connectPlatform = (platform: 'facebook' | 'google' | 'google_sheets' | 'tiktok') => {
@@ -490,12 +507,23 @@ function AdsPageContent() {
                         size="sm"
                         onClick={() => handleSync(account.id)}
                         disabled={syncing === account.id}
+                        title="Synka senaste 30 dagarna"
                       >
                         {syncing === account.id ? (
                           <Loader2 className="w-4 h-4 animate-spin" />
                         ) : (
                           <RefreshCw className="w-4 h-4" />
                         )}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setHistoricalSyncDialog(account)}
+                        disabled={syncing === account.id}
+                        className="text-violet-600 hover:text-violet-700 hover:bg-violet-50"
+                        title="Synka historisk data"
+                      >
+                        <History className="w-4 h-4" />
                       </Button>
                     </div>
                   </div>
@@ -569,6 +597,91 @@ function AdsPageContent() {
           </Table>
         </CardContent>
       </Card>
+
+      {/* Historical Sync Dialog */}
+      <Dialog open={!!historicalSyncDialog} onOpenChange={() => setHistoricalSyncDialog(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <History className="w-5 h-5 text-violet-600" />
+              Historisk synkronisering
+            </DialogTitle>
+            <DialogDescription>
+              Synka annonsdata från ett specifikt datum för{' '}
+              <strong>{historicalSyncDialog?.accountName || historicalSyncDialog?.platformAccountId}</strong>.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label htmlFor="sync-date" className="flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-slate-500" />
+                Startdatum
+              </Label>
+              <Input
+                id="sync-date"
+                type="date"
+                value={historicalSyncDate}
+                onChange={(e) => setHistoricalSyncDate(e.target.value)}
+                max={new Date().toISOString().split('T')[0]}
+              />
+              <p className="text-xs text-slate-500">
+                All annonsdata från detta datum och framåt kommer att synkas.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const d = new Date()
+                  d.setMonth(d.getMonth() - 3)
+                  setHistoricalSyncDate(d.toISOString().split('T')[0])
+                }}
+                className="text-xs"
+              >
+                3 månader
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const d = new Date()
+                  d.setMonth(d.getMonth() - 6)
+                  setHistoricalSyncDate(d.toISOString().split('T')[0])
+                }}
+                className="text-xs"
+              >
+                6 månader
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setHistoricalSyncDate('2024-08-01')}
+                className="text-xs"
+              >
+                Aug 2024
+              </Button>
+            </div>
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+              <p className="text-sm text-amber-800">
+                <strong>OBS:</strong> Historisk synkronisering kan ta en stund beroende på datamängden.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setHistoricalSyncDialog(null)}>
+              Avbryt
+            </Button>
+            <Button
+              onClick={() => historicalSyncDialog && handleHistoricalSync(historicalSyncDialog)}
+              className="bg-violet-600 hover:bg-violet-700"
+            >
+              <History className="w-4 h-4 mr-2" />
+              Starta historisk synk
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
