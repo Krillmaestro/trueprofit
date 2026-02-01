@@ -101,9 +101,9 @@ export async function GET(request: NextRequest) {
   // Get sales data for these products from line items
   const variantIds = products.flatMap((p) => p.variants.map((v) => v.id))
 
-  // Get aggregated sales data per variant
-  const salesData = await prisma.orderLineItem.groupBy({
-    by: ['variantId'],
+  // Get individual line items to calculate revenue correctly
+  // We can't use groupBy because price is per-unit and we need price * quantity
+  const lineItems = await prisma.orderLineItem.findMany({
     where: {
       variantId: { in: variantIds },
       order: {
@@ -111,26 +111,30 @@ export async function GET(request: NextRequest) {
         financialStatus: { in: ['paid', 'partially_paid', 'partially_refunded'] },
       },
     },
-    _sum: {
+    select: {
+      variantId: true,
       quantity: true,
       price: true,
       totalDiscount: true,
+      orderId: true,
     },
-    _count: true,
   })
 
-  // Build sales lookup
-  const salesLookup = new Map<string, { quantity: number; revenue: number; orders: number }>()
-  for (const sale of salesData) {
-    if (sale.variantId) {
-      const quantity = sale._sum.quantity || 0
-      const price = Number(sale._sum.price || 0)
-      const discount = Number(sale._sum.totalDiscount || 0)
-      salesLookup.set(sale.variantId, {
-        quantity,
-        revenue: price * quantity - discount,
-        orders: sale._count,
-      })
+  // Build sales lookup - calculate revenue correctly as (price * quantity) - discount
+  const salesLookup = new Map<string, { quantity: number; revenue: number; orders: Set<string> }>()
+  for (const item of lineItems) {
+    if (item.variantId) {
+      const existing = salesLookup.get(item.variantId) || { quantity: 0, revenue: 0, orders: new Set<string>() }
+      const unitPrice = Number(item.price || 0)
+      const quantity = item.quantity || 0
+      const discount = Number(item.totalDiscount || 0)
+
+      // Revenue = (unit price × quantity) - discount per line item
+      existing.quantity += quantity
+      existing.revenue += (unitPrice * quantity) - discount
+      existing.orders.add(item.orderId)
+
+      salesLookup.set(item.variantId, existing)
     }
   }
 
@@ -144,10 +148,10 @@ export async function GET(request: NextRequest) {
     let avgPrice = 0
 
     for (const variant of product.variants) {
-      const sales = salesLookup.get(variant.id) || { quantity: 0, revenue: 0, orders: 0 }
+      const sales = salesLookup.get(variant.id) || { quantity: 0, revenue: 0, orders: new Set<string>() }
       totalSold += sales.quantity
       totalRevenue += sales.revenue
-      totalOrders += sales.orders
+      totalOrders += sales.orders.size  // Count unique orders
 
       if (variant.cogsEntries?.[0]) {
         hasCOGS = true
