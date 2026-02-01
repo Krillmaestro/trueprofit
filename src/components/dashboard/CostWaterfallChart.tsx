@@ -30,13 +30,13 @@ export function CostWaterfallChart({ data, total, loading }: CostWaterfallChartP
     return (
       <GlowCard className="p-6" hover={false}>
         <div className="animate-pulse">
-          <div className="h-6 bg-slate-200 rounded w-40 mb-6" />
+          <div className="h-6 bg-slate-200 dark:bg-slate-700 rounded w-40 mb-6" />
           <div className="space-y-4">
             {[1, 2, 3, 4, 5].map((i) => (
               <div key={i} className="flex items-center gap-4">
-                <div className="h-4 bg-slate-200 rounded w-20" />
-                <div className="flex-1 h-8 bg-slate-100 rounded-lg" />
-                <div className="h-4 bg-slate-200 rounded w-16" />
+                <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-20" />
+                <div className="flex-1 h-8 bg-slate-100 dark:bg-slate-700 rounded-lg" />
+                <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-16" />
               </div>
             ))}
           </div>
@@ -49,12 +49,12 @@ export function CostWaterfallChart({ data, total, loading }: CostWaterfallChartP
     <GlowCard className="p-6">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h2 className="text-lg font-semibold text-slate-800">Cost Breakdown</h2>
-          <p className="text-sm text-slate-500 mt-0.5">Where your money goes</p>
+          <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Cost Breakdown</h2>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Where your money goes</p>
         </div>
         <div className="text-right">
-          <div className="text-sm text-slate-500">Total</div>
-          <div className="text-lg font-bold text-slate-800">{formatCurrency(total)} kr</div>
+          <div className="text-sm text-slate-500 dark:text-slate-400">Total</div>
+          <div className="text-lg font-bold text-slate-800 dark:text-slate-100">{formatCurrency(total)} kr</div>
         </div>
       </div>
 
@@ -71,20 +71,20 @@ export function CostWaterfallChart({ data, total, loading }: CostWaterfallChartP
                     className="w-2.5 h-2.5 rounded-full"
                     style={{ backgroundColor: item.color }}
                   />
-                  <span className="text-sm font-medium text-slate-700">{item.name}</span>
+                  <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{item.name}</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold text-slate-800">
+                  <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">
                     {formatCurrency(item.value)} kr
                   </span>
-                  <span className="text-xs text-slate-400 w-10 text-right">
+                  <span className="text-xs text-slate-400 dark:text-slate-500 w-10 text-right">
                     {percentage.toFixed(0)}%
                   </span>
                 </div>
               </div>
 
               {/* Bar */}
-              <div className="relative h-8 bg-slate-100 rounded-lg overflow-hidden">
+              <div className="relative h-8 bg-slate-100 dark:bg-slate-700 rounded-lg overflow-hidden">
                 <div
                   className="absolute inset-y-0 left-0 rounded-lg transition-all duration-500 ease-out group-hover:opacity-90"
                   style={{
@@ -107,7 +107,7 @@ export function CostWaterfallChart({ data, total, loading }: CostWaterfallChartP
       </div>
 
       {/* Visual pie indicator */}
-      <div className="mt-6 pt-6 border-t border-slate-100">
+      <div className="mt-6 pt-6 border-t border-slate-100 dark:border-slate-700">
         <div className="flex items-center gap-3 flex-wrap">
           {data.slice(0, 5).map((item) => (
             <div key={item.name} className="flex items-center gap-1.5">
@@ -115,11 +115,11 @@ export function CostWaterfallChart({ data, total, loading }: CostWaterfallChartP
                 className="w-2 h-2 rounded-full"
                 style={{ backgroundColor: item.color }}
               />
-              <span className="text-xs text-slate-500">{item.name}</span>
+              <span className="text-xs text-slate-500 dark:text-slate-400">{item.name}</span>
             </div>
           ))}
           {data.length > 5 && (
-            <span className="text-xs text-slate-400">+{data.length - 5} more</span>
+            <span className="text-xs text-slate-400 dark:text-slate-500">+{data.length - 5} more</span>
           )}
         </div>
       </div>

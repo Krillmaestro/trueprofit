@@ -247,11 +247,11 @@ export function BenchmarkCard({
   const getComparisonColor = (status: string) => {
     switch (status) {
       case 'better':
-        return 'text-emerald-600 bg-emerald-50'
+        return 'text-emerald-600 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-900/50'
       case 'worse':
-        return 'text-rose-600 bg-rose-50'
+        return 'text-rose-600 bg-rose-50 dark:text-rose-400 dark:bg-rose-900/50'
       default:
-        return 'text-slate-600 bg-slate-50'
+        return 'text-slate-600 bg-slate-50 dark:text-slate-300 dark:bg-slate-800/50'
     }
   }
 
@@ -273,12 +273,12 @@ export function BenchmarkCard({
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
-            <BarChart3 className="w-4 h-4 text-blue-600" />
+          <div className="w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center">
+            <BarChart3 className="w-4 h-4 text-blue-600 dark:text-blue-400" />
           </div>
           <div>
-            <h3 className="font-semibold text-slate-800">Branschjämförelse</h3>
-            <p className="text-xs text-slate-500">Jämför med branschsnitt</p>
+            <h3 className="font-semibold text-slate-800 dark:text-slate-100">Branschjämförelse</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Jämför med branschsnitt</p>
           </div>
         </div>
 
@@ -296,7 +296,7 @@ export function BenchmarkCard({
 
       {/* Industry Selector */}
       <div className="mb-4">
-        <label className="text-xs text-slate-500 mb-1 block">Välj bransch</label>
+        <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">Välj bransch</label>
         <Select value={selectedIndustry} onValueChange={handleIndustryChange}>
           <SelectTrigger className="w-full">
             <SelectValue placeholder="Välj bransch" />
@@ -323,10 +323,10 @@ export function BenchmarkCard({
               <div key={metric.label}>
                 <div className="flex items-center justify-between mb-1.5">
                   <div className="flex items-center gap-1.5">
-                    <span className="text-sm text-slate-600">{metric.label}</span>
+                    <span className="text-sm text-slate-600 dark:text-slate-300">{metric.label}</span>
                     <Tooltip>
                       <TooltipTrigger>
-                        <Info className="w-3.5 h-3.5 text-slate-400" />
+                        <Info className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500" />
                       </TooltipTrigger>
                       <TooltipContent>
                         <p className="max-w-xs text-xs">{metric.description}</p>
@@ -334,7 +334,7 @@ export function BenchmarkCard({
                     </Tooltip>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-slate-800">
+                    <span className="text-sm font-medium text-slate-800 dark:text-slate-100">
                       {metric.value.toFixed(1)}{metric.suffix}
                     </span>
                     <span className={cn(
@@ -347,10 +347,10 @@ export function BenchmarkCard({
                 </div>
 
                 {/* Comparison bars */}
-                <div className="relative h-6 rounded-lg bg-slate-100 overflow-hidden">
+                <div className="relative h-6 rounded-lg bg-slate-100 dark:bg-slate-700 overflow-hidden">
                   {/* Benchmark bar */}
                   <div
-                    className="absolute top-0 h-full bg-slate-300/50 rounded-lg"
+                    className="absolute top-0 h-full bg-slate-300/50 dark:bg-slate-500/50 rounded-lg"
                     style={{ width: `${getBarWidth(metric.benchmark, metric.value)}%` }}
                   />
                   {/* Your value bar */}
@@ -363,13 +363,13 @@ export function BenchmarkCard({
                   />
                   {/* Benchmark marker */}
                   <div
-                    className="absolute top-0 w-0.5 h-full bg-slate-600"
+                    className="absolute top-0 w-0.5 h-full bg-slate-600 dark:bg-slate-300"
                     style={{ left: `${getBarWidth(metric.benchmark, metric.value)}%` }}
                   />
                   {/* Labels */}
                   <div className="absolute inset-0 flex items-center justify-between px-2">
                     <span className="text-xs font-medium text-white drop-shadow">Du</span>
-                    <span className="text-xs text-slate-500">
+                    <span className="text-xs text-slate-500 dark:text-slate-400">
                       Snitt: {metric.benchmark}{metric.suffix}
                     </span>
                   </div>
@@ -381,14 +381,14 @@ export function BenchmarkCard({
       </div>
 
       {/* Footer */}
-      <div className="mt-4 pt-4 border-t border-slate-100">
+      <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-700">
         <div className="flex items-center justify-between">
-          <span className="text-xs text-slate-500">
+          <span className="text-xs text-slate-500 dark:text-slate-400">
             Källa: {benchmark.source}
           </span>
           <Tooltip>
             <TooltipTrigger asChild>
-              <button className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700">
+              <button className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300">
                 <Info className="w-3 h-3" />
                 <span>Om data</span>
               </button>
@@ -439,13 +439,13 @@ export function MiniBenchmark({
 
   return (
     <div className={cn('flex items-center gap-2', className)}>
-      <span className="text-xs text-slate-500">{label}:</span>
-      <span className="text-xs font-medium text-slate-700">{value.toFixed(1)}{suffix}</span>
+      <span className="text-xs text-slate-500 dark:text-slate-400">{label}:</span>
+      <span className="text-xs font-medium text-slate-700 dark:text-slate-200">{value.toFixed(1)}{suffix}</span>
       <span className={cn(
         'text-xs px-1 py-0.5 rounded',
-        status === 'better' ? 'text-emerald-600 bg-emerald-50' :
-          status === 'worse' ? 'text-rose-600 bg-rose-50' :
-            'text-slate-500 bg-slate-100'
+        status === 'better' ? 'text-emerald-600 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-900/50' :
+          status === 'worse' ? 'text-rose-600 bg-rose-50 dark:text-rose-400 dark:bg-rose-900/50' :
+            'text-slate-500 bg-slate-100 dark:text-slate-400 dark:bg-slate-700'
       )}>
         vs {benchmark}{suffix}
       </span>

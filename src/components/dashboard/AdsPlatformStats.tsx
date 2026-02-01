@@ -187,9 +187,9 @@ export function AdsPlatformStats({
     return (
       <GlowCard className={cn('p-6', className)} glowColor="blue">
         <div className="text-center py-8">
-          <Target className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-          <h3 className="font-semibold text-slate-700 mb-1">Inga annonsplattformar kopplade</h3>
-          <p className="text-sm text-slate-500">
+          <Target className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto mb-3" />
+          <h3 className="font-semibold text-slate-700 dark:text-slate-200 mb-1">Inga annonsplattformar kopplade</h3>
+          <p className="text-sm text-slate-500 dark:text-slate-400">
             Koppla Facebook Ads eller Google Ads för att se detaljerad statistik.
           </p>
         </div>
@@ -219,8 +219,8 @@ export function AdsPlatformStats({
                   {getPlatformIcon(platform.platform)}
                 </div>
                 <div>
-                  <h3 className="font-bold text-slate-800">{platform.name}</h3>
-                  <p className="text-xs text-slate-500">Annonsstatistik</p>
+                  <h3 className="font-bold text-slate-800 dark:text-slate-100">{platform.name}</h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Annonsstatistik</p>
                 </div>
               </div>
 
@@ -228,8 +228,8 @@ export function AdsPlatformStats({
               <div className={cn(
                 'flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold',
                 platform.isProfitable
-                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                  : 'bg-rose-50 text-rose-700 border border-rose-200'
+                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-900/50 dark:text-emerald-300 dark:border-emerald-700'
+                  : 'bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-900/50 dark:text-rose-300 dark:border-rose-700'
               )}>
                 {platform.isProfitable ? (
                   <CheckCircle2 className="w-3 h-3" />
@@ -241,20 +241,20 @@ export function AdsPlatformStats({
             </div>
 
             {/* ROAS - Main metric */}
-            <div className="bg-slate-50 rounded-xl p-4 mb-4">
+            <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-4 mb-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-xs text-slate-500 mb-1">ROAS</div>
+                  <div className="text-xs text-slate-500 dark:text-slate-400 mb-1">ROAS</div>
                   <div className={cn(
                     'text-3xl font-bold',
-                    platform.isProfitable ? 'text-emerald-600' : 'text-rose-600'
+                    platform.isProfitable ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
                   )}>
                     {platform.roas.toFixed(2)}x
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-xs text-slate-500 mb-1">Break-Even</div>
-                  <div className="text-xl font-semibold text-slate-600">
+                  <div className="text-xs text-slate-500 dark:text-slate-400 mb-1">Break-Even</div>
+                  <div className="text-xl font-semibold text-slate-600 dark:text-slate-300">
                     {platform.breakEvenRoas.toFixed(2)}x
                   </div>
                 </div>
@@ -263,13 +263,13 @@ export function AdsPlatformStats({
               {/* Visual indicator */}
               <div className="mt-3 flex items-center gap-2">
                 {platform.isProfitable ? (
-                  <TrendingUp className="w-4 h-4 text-emerald-500" />
+                  <TrendingUp className="w-4 h-4 text-emerald-500 dark:text-emerald-400" />
                 ) : (
-                  <TrendingDown className="w-4 h-4 text-rose-500" />
+                  <TrendingDown className="w-4 h-4 text-rose-500 dark:text-rose-400" />
                 )}
                 <span className={cn(
                   'text-sm font-medium',
-                  platform.isProfitable ? 'text-emerald-600' : 'text-rose-600'
+                  platform.isProfitable ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
                 )}>
                   {platform.isProfitable ? '+' : ''}
                   {((platform.roas - platform.breakEvenRoas) / platform.breakEvenRoas * 100).toFixed(0)}%
@@ -280,55 +280,55 @@ export function AdsPlatformStats({
 
             {/* Key metrics grid */}
             <div className="grid grid-cols-2 gap-3 mb-4">
-              <div className="bg-slate-50 rounded-lg p-3">
-                <div className="flex items-center gap-1.5 text-slate-500 mb-1">
+              <div className="bg-slate-50 dark:bg-slate-800/50 rounded-lg p-3">
+                <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 mb-1">
                   <DollarSign className="w-3.5 h-3.5" />
                   <span className="text-xs">Spend</span>
                 </div>
-                <div className="font-bold text-slate-800">{formatCurrency(platform.spend)}</div>
+                <div className="font-bold text-slate-800 dark:text-slate-100">{formatCurrency(platform.spend)}</div>
               </div>
 
-              <div className="bg-slate-50 rounded-lg p-3">
-                <div className="flex items-center gap-1.5 text-slate-500 mb-1">
+              <div className="bg-slate-50 dark:bg-slate-800/50 rounded-lg p-3">
+                <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 mb-1">
                   <DollarSign className="w-3.5 h-3.5" />
                   <span className="text-xs">Intäkt</span>
                 </div>
-                <div className="font-bold text-slate-800">{formatCurrency(platform.revenue)}</div>
+                <div className="font-bold text-slate-800 dark:text-slate-100">{formatCurrency(platform.revenue)}</div>
               </div>
             </div>
 
             {/* Performance metrics */}
             <div className="grid grid-cols-3 gap-2 text-center">
-              <div className="bg-slate-50/50 rounded-lg p-2">
-                <div className="flex items-center justify-center gap-1 text-slate-400 mb-0.5">
+              <div className="bg-slate-50/50 dark:bg-slate-800/30 rounded-lg p-2">
+                <div className="flex items-center justify-center gap-1 text-slate-400 dark:text-slate-500 mb-0.5">
                   <Eye className="w-3 h-3" />
                 </div>
-                <div className="text-sm font-semibold text-slate-700">{formatNumber(platform.impressions)}</div>
-                <div className="text-[10px] text-slate-400">Visningar</div>
+                <div className="text-sm font-semibold text-slate-700 dark:text-slate-200">{formatNumber(platform.impressions)}</div>
+                <div className="text-[10px] text-slate-400 dark:text-slate-500">Visningar</div>
               </div>
 
-              <div className="bg-slate-50/50 rounded-lg p-2">
-                <div className="flex items-center justify-center gap-1 text-slate-400 mb-0.5">
+              <div className="bg-slate-50/50 dark:bg-slate-800/30 rounded-lg p-2">
+                <div className="flex items-center justify-center gap-1 text-slate-400 dark:text-slate-500 mb-0.5">
                   <MousePointerClick className="w-3 h-3" />
                 </div>
-                <div className="text-sm font-semibold text-slate-700">{formatNumber(platform.clicks)}</div>
-                <div className="text-[10px] text-slate-400">Klick</div>
+                <div className="text-sm font-semibold text-slate-700 dark:text-slate-200">{formatNumber(platform.clicks)}</div>
+                <div className="text-[10px] text-slate-400 dark:text-slate-500">Klick</div>
               </div>
 
-              <div className="bg-slate-50/50 rounded-lg p-2">
-                <div className="flex items-center justify-center gap-1 text-slate-400 mb-0.5">
+              <div className="bg-slate-50/50 dark:bg-slate-800/30 rounded-lg p-2">
+                <div className="flex items-center justify-center gap-1 text-slate-400 dark:text-slate-500 mb-0.5">
                   <ShoppingCart className="w-3 h-3" />
                 </div>
-                <div className="text-sm font-semibold text-slate-700">{formatNumber(platform.conversions)}</div>
-                <div className="text-[10px] text-slate-400">Köp</div>
+                <div className="text-sm font-semibold text-slate-700 dark:text-slate-200">{formatNumber(platform.conversions)}</div>
+                <div className="text-[10px] text-slate-400 dark:text-slate-500">Köp</div>
               </div>
             </div>
 
             {/* CPC and CTR */}
-            <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-100 text-xs text-slate-500">
-              <span>CPC: <span className="font-medium text-slate-700">{platform.cpc.toFixed(2)} kr</span></span>
-              <span>CTR: <span className="font-medium text-slate-700">{platform.ctr.toFixed(2)}%</span></span>
-              <span>Conv: <span className="font-medium text-slate-700">{platform.conversionRate.toFixed(2)}%</span></span>
+            <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-100 dark:border-slate-700 text-xs text-slate-500 dark:text-slate-400">
+              <span>CPC: <span className="font-medium text-slate-700 dark:text-slate-200">{platform.cpc.toFixed(2)} kr</span></span>
+              <span>CTR: <span className="font-medium text-slate-700 dark:text-slate-200">{platform.ctr.toFixed(2)}%</span></span>
+              <span>Conv: <span className="font-medium text-slate-700 dark:text-slate-200">{platform.conversionRate.toFixed(2)}%</span></span>
             </div>
           </GlowCard>
         )

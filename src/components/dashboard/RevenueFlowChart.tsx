@@ -47,8 +47,8 @@ interface CustomTooltipProps {
 function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
   if (active && payload && payload.length) {
     return (
-      <div className="bg-white/95 backdrop-blur-sm p-4 rounded-xl shadow-lg border border-slate-200/60">
-        <p className="text-sm font-semibold text-slate-800 mb-2">{label}</p>
+      <div className="bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm p-4 rounded-xl shadow-lg border border-slate-200/60 dark:border-slate-700/60">
+        <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 mb-2">{label}</p>
         <div className="space-y-1.5">
           {payload.map((entry, index) => (
             <div key={index} className="flex items-center justify-between gap-4">
@@ -57,9 +57,9 @@ function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
                   className="w-2.5 h-2.5 rounded-full"
                   style={{ backgroundColor: entry.color }}
                 />
-                <span className="text-sm text-slate-600">{entry.name}</span>
+                <span className="text-sm text-slate-600 dark:text-slate-300">{entry.name}</span>
               </div>
-              <span className="text-sm font-medium text-slate-800">
+              <span className="text-sm font-medium text-slate-800 dark:text-slate-100">
                 {formatCurrency(entry.value)}
               </span>
             </div>
@@ -76,8 +76,8 @@ export function RevenueFlowChart({ data, loading }: RevenueFlowChartProps) {
     return (
       <GlowCard className="p-6" hover={false}>
         <div className="animate-pulse">
-          <div className="h-6 bg-slate-200 rounded w-48 mb-6" />
-          <div className="h-[280px] bg-slate-100 rounded-xl" />
+          <div className="h-6 bg-slate-200 dark:bg-slate-700 rounded w-48 mb-6" />
+          <div className="h-[280px] bg-slate-100 dark:bg-slate-700 rounded-xl" />
         </div>
       </GlowCard>
     )
@@ -89,12 +89,12 @@ export function RevenueFlowChart({ data, loading }: RevenueFlowChartProps) {
       <GlowCard className="p-6">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h2 className="text-lg font-semibold text-slate-800">Revenue Flow</h2>
-            <p className="text-sm text-slate-500 mt-0.5">Revenue, costs & profit over time</p>
+            <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Revenue Flow</h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Revenue, costs & profit over time</p>
           </div>
         </div>
         <div className="h-[280px] flex items-center justify-center">
-          <p className="text-slate-400">Ingen data för vald period</p>
+          <p className="text-slate-400 dark:text-slate-500">Ingen data för vald period</p>
         </div>
       </GlowCard>
     )
@@ -109,21 +109,21 @@ export function RevenueFlowChart({ data, loading }: RevenueFlowChartProps) {
       <GlowCard className="p-6">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h2 className="text-lg font-semibold text-slate-800">Dagens Resultat</h2>
-            <p className="text-sm text-slate-500 mt-0.5">{day.date}</p>
+            <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Dagens Resultat</h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">{day.date}</p>
           </div>
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
               <div className="w-3 h-3 rounded-full bg-blue-500" />
-              <span className="text-sm text-slate-600">Revenue</span>
+              <span className="text-sm text-slate-600 dark:text-slate-300">Revenue</span>
             </div>
             <div className="flex items-center gap-2">
               <div className="w-3 h-3 rounded-full bg-rose-500" />
-              <span className="text-sm text-slate-600">Costs</span>
+              <span className="text-sm text-slate-600 dark:text-slate-300">Costs</span>
             </div>
             <div className="flex items-center gap-2">
               <div className="w-3 h-3 rounded-full bg-emerald-500" />
-              <span className="text-sm text-slate-600">Profit</span>
+              <span className="text-sm text-slate-600 dark:text-slate-300">Profit</span>
             </div>
           </div>
         </div>
@@ -131,10 +131,10 @@ export function RevenueFlowChart({ data, loading }: RevenueFlowChartProps) {
           {/* Revenue Bar */}
           <div>
             <div className="flex justify-between text-sm mb-2">
-              <span className="text-slate-600 font-medium">Omsättning</span>
-              <span className="font-bold text-blue-600">{formatCurrency(day.revenue)}</span>
+              <span className="text-slate-600 dark:text-slate-300 font-medium">Omsättning</span>
+              <span className="font-bold text-blue-600 dark:text-blue-400">{formatCurrency(day.revenue)}</span>
             </div>
-            <div className="h-8 bg-slate-100 rounded-full overflow-hidden">
+            <div className="h-8 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
               <div
                 className="h-full bg-gradient-to-r from-blue-400 to-blue-600 rounded-full transition-all duration-500"
                 style={{ width: `${maxValue > 0 ? (day.revenue / maxValue) * 100 : 0}%` }}
@@ -144,10 +144,10 @@ export function RevenueFlowChart({ data, loading }: RevenueFlowChartProps) {
           {/* Costs Bar */}
           <div>
             <div className="flex justify-between text-sm mb-2">
-              <span className="text-slate-600 font-medium">Kostnader</span>
-              <span className="font-bold text-rose-600">{formatCurrency(day.costs)}</span>
+              <span className="text-slate-600 dark:text-slate-300 font-medium">Kostnader</span>
+              <span className="font-bold text-rose-600 dark:text-rose-400">{formatCurrency(day.costs)}</span>
             </div>
-            <div className="h-8 bg-slate-100 rounded-full overflow-hidden">
+            <div className="h-8 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
               <div
                 className="h-full bg-gradient-to-r from-rose-400 to-rose-600 rounded-full transition-all duration-500"
                 style={{ width: `${maxValue > 0 ? (day.costs / maxValue) * 100 : 0}%` }}
@@ -157,12 +157,12 @@ export function RevenueFlowChart({ data, loading }: RevenueFlowChartProps) {
           {/* Profit Bar */}
           <div>
             <div className="flex justify-between text-sm mb-2">
-              <span className="text-slate-600 font-medium">Vinst</span>
-              <span className={`font-bold ${day.profit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+              <span className="text-slate-600 dark:text-slate-300 font-medium">Vinst</span>
+              <span className={`font-bold ${day.profit >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
                 {day.profit >= 0 ? '+' : ''}{formatCurrency(day.profit)}
               </span>
             </div>
-            <div className="h-8 bg-slate-100 rounded-full overflow-hidden">
+            <div className="h-8 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
               <div
                 className={`h-full rounded-full transition-all duration-500 ${
                   day.profit >= 0
@@ -174,12 +174,12 @@ export function RevenueFlowChart({ data, loading }: RevenueFlowChartProps) {
             </div>
           </div>
           {/* Margin indicator */}
-          <div className="pt-4 border-t border-slate-100">
+          <div className="pt-4 border-t border-slate-100 dark:border-slate-700">
             <div className="flex items-center justify-center gap-3">
-              <div className={`text-3xl font-bold ${day.profit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+              <div className={`text-3xl font-bold ${day.profit >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
                 {day.revenue > 0 ? ((day.profit / day.revenue) * 100).toFixed(1) : 0}%
               </div>
-              <div className="text-slate-500 text-sm">vinstmarginal</div>
+              <div className="text-slate-500 dark:text-slate-400 text-sm">vinstmarginal</div>
             </div>
           </div>
         </div>
@@ -191,21 +191,21 @@ export function RevenueFlowChart({ data, loading }: RevenueFlowChartProps) {
     <GlowCard className="p-6">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h2 className="text-lg font-semibold text-slate-800">Revenue Flow</h2>
-          <p className="text-sm text-slate-500 mt-0.5">Revenue, costs & profit over time</p>
+          <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Revenue Flow</h2>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Revenue, costs & profit over time</p>
         </div>
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 rounded-full bg-blue-500" />
-            <span className="text-sm text-slate-600">Revenue</span>
+            <span className="text-sm text-slate-600 dark:text-slate-300">Revenue</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 rounded-full bg-rose-500" />
-            <span className="text-sm text-slate-600">Costs</span>
+            <span className="text-sm text-slate-600 dark:text-slate-300">Costs</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 rounded-full bg-emerald-500" />
-            <span className="text-sm text-slate-600">Profit</span>
+            <span className="text-sm text-slate-600 dark:text-slate-300">Profit</span>
           </div>
         </div>
       </div>

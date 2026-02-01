@@ -111,25 +111,25 @@ export function ProfitMeter({ revenue, costs, profit, className }: ProfitMeterPr
       </svg>
 
       {/* Stats below gauge */}
-      <div className="grid grid-cols-3 gap-4 mt-6 pt-6 border-t border-slate-100">
+      <div className="grid grid-cols-3 gap-4 mt-6 pt-6 border-t border-slate-100 dark:border-slate-700">
         <div className="text-center">
-          <div className="text-xs font-medium text-slate-400 uppercase tracking-wider">Revenue</div>
-          <div className="text-xl font-bold text-slate-700 mt-1">{formatCurrency(revenue)} kr</div>
+          <div className="text-xs font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider">Revenue</div>
+          <div className="text-xl font-bold text-slate-700 dark:text-slate-200 mt-1">{formatCurrency(revenue)} kr</div>
         </div>
         <div className="text-center">
           <div className={cn(
             'text-3xl font-bold',
-            profit >= 0 ? 'text-emerald-600' : 'text-rose-600'
+            profit >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
           )}>
             {profit >= 0 ? '+' : ''}{profitMargin.toFixed(1)}%
           </div>
-          <div className="text-xs font-medium text-slate-400 uppercase tracking-wider mt-1">Profit Margin</div>
+          <div className="text-xs font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider mt-1">Profit Margin</div>
         </div>
         <div className="text-center">
-          <div className="text-xs font-medium text-slate-400 uppercase tracking-wider">Profit</div>
+          <div className="text-xs font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider">Profit</div>
           <div className={cn(
             'text-xl font-bold mt-1',
-            profit >= 0 ? 'text-emerald-600' : 'text-rose-600'
+            profit >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
           )}>
             {profit >= 0 ? '+' : ''}{formatCurrency(profit)} kr
           </div>

@@ -80,16 +80,16 @@ export function ProfitPieChart({
     const percent = revenue > 0 ? (item.value / revenue) * 100 : 0
 
     return (
-      <div className="bg-white rounded-xl shadow-2xl border border-slate-200 p-4" style={{ zIndex: 9999 }}>
+      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 p-4" style={{ zIndex: 9999 }}>
         <div className="flex items-center gap-3 mb-3">
           <div
-            className="w-5 h-5 rounded-full shadow-md ring-2 ring-white"
+            className="w-5 h-5 rounded-full shadow-md ring-2 ring-white dark:ring-slate-800"
             style={{ backgroundColor: item.payload.color }}
           />
-          <span className="font-bold text-slate-900 text-lg">{item.name}</span>
+          <span className="font-bold text-slate-900 dark:text-slate-100 text-lg">{item.name}</span>
         </div>
-        <div className="text-2xl font-bold text-slate-900 mb-1">{formatCurrency(item.value)}</div>
-        <div className="text-base font-semibold text-slate-600">{percent.toFixed(1)}% av omsättning</div>
+        <div className="text-2xl font-bold text-slate-900 dark:text-slate-100 mb-1">{formatCurrency(item.value)}</div>
+        <div className="text-base font-semibold text-slate-600 dark:text-slate-400">{percent.toFixed(1)}% av omsättning</div>
       </div>
     )
   }
@@ -105,8 +105,8 @@ export function ProfitPieChart({
                 className="w-3 h-3 rounded-full flex-shrink-0"
                 style={{ backgroundColor: item.color }}
               />
-              <span className="text-xs text-slate-600 truncate">{item.name}</span>
-              <span className="text-xs font-medium text-slate-800 ml-auto">{percent.toFixed(0)}%</span>
+              <span className="text-xs text-slate-600 dark:text-slate-300 truncate">{item.name}</span>
+              <span className="text-xs font-medium text-slate-800 dark:text-slate-200 ml-auto">{percent.toFixed(0)}%</span>
             </div>
           )
         })}
@@ -118,12 +118,12 @@ export function ProfitPieChart({
     <GlowCard className={cn('p-6', className)} glowColor={profit >= 0 ? 'emerald' : 'rose'}>
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h3 className="font-semibold text-slate-800">Intäktsfördelning</h3>
-          <p className="text-xs text-slate-500">Vart pengarna går</p>
+          <h3 className="font-semibold text-slate-800 dark:text-slate-100">Intäktsfördelning</h3>
+          <p className="text-xs text-slate-500 dark:text-slate-400">Vart pengarna går</p>
         </div>
         <div className="text-right">
-          <div className="text-sm text-slate-500">Omsättning</div>
-          <div className="text-lg font-bold text-slate-800">{formatCurrency(revenue)}</div>
+          <div className="text-sm text-slate-500 dark:text-slate-400">Omsättning</div>
+          <div className="text-lg font-bold text-slate-800 dark:text-slate-100">{formatCurrency(revenue)}</div>
         </div>
       </div>
 
@@ -152,14 +152,14 @@ export function ProfitPieChart({
         </ResponsiveContainer>
         {/* Center label - positioned inside the donut hole with solid background */}
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none" style={{ zIndex: 1 }}>
-          <div className="text-center bg-white rounded-full w-24 h-24 flex flex-col items-center justify-center shadow-lg border border-slate-100">
+          <div className="text-center bg-white dark:bg-slate-800 rounded-full w-24 h-24 flex flex-col items-center justify-center shadow-lg border border-slate-100 dark:border-slate-700">
             <div className={cn(
               'text-3xl font-bold leading-none',
-              profit >= 0 ? 'text-emerald-600' : 'text-rose-600'
+              profit >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
             )}>
               {profitPercent.toFixed(0)}%
             </div>
-            <div className="text-xs text-slate-500 mt-1 font-semibold uppercase tracking-wider">
+            <div className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-semibold uppercase tracking-wider">
               {profit >= 0 ? 'vinst' : 'förlust'}
             </div>
           </div>
@@ -167,21 +167,21 @@ export function ProfitPieChart({
       </div>
 
       {/* Summary */}
-      <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-slate-100">
+      <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-slate-100 dark:border-slate-700">
         <div className="text-center">
-          <div className="text-sm text-slate-500">Kostnader</div>
-          <div className="text-lg font-bold text-slate-700">{formatCurrency(totalCosts)}</div>
-          <div className="text-xs text-slate-400">{costsPercent.toFixed(0)}%</div>
+          <div className="text-sm text-slate-500 dark:text-slate-400">Kostnader</div>
+          <div className="text-lg font-bold text-slate-700 dark:text-slate-200">{formatCurrency(totalCosts)}</div>
+          <div className="text-xs text-slate-400 dark:text-slate-500">{costsPercent.toFixed(0)}%</div>
         </div>
         <div className="text-center">
-          <div className="text-sm text-slate-500">Vinst</div>
+          <div className="text-sm text-slate-500 dark:text-slate-400">Vinst</div>
           <div className={cn(
             'text-lg font-bold',
-            profit >= 0 ? 'text-emerald-600' : 'text-rose-600'
+            profit >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
           )}>
             {profit >= 0 ? '+' : ''}{formatCurrency(profit)}
           </div>
-          <div className="text-xs text-slate-400">{profitPercent.toFixed(0)}%</div>
+          <div className="text-xs text-slate-400 dark:text-slate-500">{profitPercent.toFixed(0)}%</div>
         </div>
       </div>
 

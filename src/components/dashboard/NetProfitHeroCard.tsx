@@ -93,12 +93,12 @@ export const NetProfitHeroCard = memo(function NetProfitHeroCard({
     return (
       <GlowCard className={cn('p-6 h-full', className)} glowColor="emerald">
         <div className="animate-pulse space-y-4">
-          <div className="h-6 bg-slate-200 rounded w-32" />
-          <div className="h-16 bg-slate-200 rounded w-48" />
+          <div className="h-6 bg-slate-200 dark:bg-slate-700 rounded w-32" />
+          <div className="h-16 bg-slate-200 dark:bg-slate-700 rounded w-48" />
           <div className="grid grid-cols-3 gap-4 mt-6">
-            <div className="h-16 bg-slate-200 rounded" />
-            <div className="h-16 bg-slate-200 rounded" />
-            <div className="h-16 bg-slate-200 rounded" />
+            <div className="h-16 bg-slate-200 dark:bg-slate-700 rounded" />
+            <div className="h-16 bg-slate-200 dark:bg-slate-700 rounded" />
+            <div className="h-16 bg-slate-200 dark:bg-slate-700 rounded" />
           </div>
         </div>
       </GlowCard>
