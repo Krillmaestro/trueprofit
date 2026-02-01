@@ -103,15 +103,15 @@ export function BreakEvenRoasCard({
     return (
       <GlowCard className={cn('p-6', className)} glowColor="blue">
         <div className="flex items-center gap-3 mb-4">
-          <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center">
-            <Target className="w-5 h-5 text-slate-400" />
+          <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
+            <Target className="w-5 h-5 text-slate-400 dark:text-slate-500" />
           </div>
           <div>
-            <h3 className="font-semibold text-slate-800">Break-Even ROAS</h3>
-            <p className="text-xs text-slate-500">Ingen annonsdata</p>
+            <h3 className="font-semibold text-slate-800 dark:text-slate-100">Break-Even ROAS</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Ingen annonsdata</p>
           </div>
         </div>
-        <p className="text-sm text-slate-500">
+        <p className="text-sm text-slate-500 dark:text-slate-400">
           Koppla ditt annonskonto för att se break-even ROAS.
         </p>
       </GlowCard>
@@ -135,8 +135,8 @@ export function BreakEvenRoasCard({
             <Target className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h3 className="font-semibold text-slate-800">Break-Even ROAS</h3>
-            <p className="text-xs text-slate-500">Minsta ROAS för lönsamhet</p>
+            <h3 className="font-semibold text-slate-800 dark:text-slate-100">Break-Even ROAS</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Minsta ROAS för lönsamhet</p>
           </div>
         </div>
 
@@ -144,8 +144,8 @@ export function BreakEvenRoasCard({
         <div className={cn(
           'flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold',
           analysis.isProfitable
-            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-            : 'bg-rose-50 text-rose-700 border border-rose-200'
+            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-900/50 dark:text-emerald-300 dark:border-emerald-700'
+            : 'bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-900/50 dark:text-rose-300 dark:border-rose-700'
         )}>
           {analysis.isProfitable ? (
             <>
@@ -165,12 +165,12 @@ export function BreakEvenRoasCard({
       <div className="grid grid-cols-2 gap-6 mb-6">
         {/* Current ROAS */}
         <div className="text-center">
-          <div className="text-xs text-slate-500 mb-1 flex items-center justify-center gap-1">
+          <div className="text-xs text-slate-500 dark:text-slate-400 mb-1 flex items-center justify-center gap-1">
             Nuvarande ROAS
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger>
-                  <Info className="w-3 h-3 text-slate-400" />
+                  <Info className="w-3 h-3 text-slate-400 dark:text-slate-500" />
                 </TooltipTrigger>
                 <TooltipContent>
                   <p>Return on Ad Spend = Annonsintäkt / Annonskostnad</p>
@@ -180,13 +180,13 @@ export function BreakEvenRoasCard({
           </div>
           <div className={cn(
             'text-4xl font-bold tracking-tight',
-            analysis.isProfitable ? 'text-emerald-600' : 'text-rose-600'
+            analysis.isProfitable ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
           )}>
             {formatRoas(analysis.currentRoas)}x
           </div>
           <div className={cn(
             'text-sm mt-1 flex items-center justify-center gap-1',
-            analysis.roasDifference >= 0 ? 'text-emerald-600' : 'text-rose-600'
+            analysis.roasDifference >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
           )}>
             {analysis.roasDifference >= 0 ? (
               <TrendingUp className="w-4 h-4" />
@@ -199,12 +199,12 @@ export function BreakEvenRoasCard({
 
         {/* Break-even ROAS */}
         <div className="text-center">
-          <div className="text-xs text-slate-500 mb-1 flex items-center justify-center gap-1">
+          <div className="text-xs text-slate-500 dark:text-slate-400 mb-1 flex items-center justify-center gap-1">
             Break-Even ROAS
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger>
-                  <Info className="w-3 h-3 text-slate-400" />
+                  <Info className="w-3 h-3 text-slate-400 dark:text-slate-500" />
                 </TooltipTrigger>
                 <TooltipContent>
                   <p>Minimum ROAS för att täcka variabla kostnader</p>
@@ -213,10 +213,10 @@ export function BreakEvenRoasCard({
               </Tooltip>
             </TooltipProvider>
           </div>
-          <div className="text-4xl font-bold text-slate-700 tracking-tight">
+          <div className="text-4xl font-bold text-slate-700 dark:text-slate-200 tracking-tight">
             {formatRoas(analysis.breakEvenRoas)}x
           </div>
-          <div className="text-sm text-slate-500 mt-1">
+          <div className="text-sm text-slate-500 dark:text-slate-400 mt-1">
             minsta krav
           </div>
         </div>
@@ -224,13 +224,13 @@ export function BreakEvenRoasCard({
 
       {/* Visual ROAS scale */}
       <div className="mb-6">
-        <div className="relative h-4 bg-gradient-to-r from-rose-200 via-amber-200 to-emerald-200 rounded-full overflow-hidden">
+        <div className="relative h-4 bg-gradient-to-r from-rose-200 via-amber-200 to-emerald-200 dark:from-rose-900/60 dark:via-amber-900/60 dark:to-emerald-900/60 rounded-full overflow-hidden">
           {/* Break-even marker */}
           <div
-            className="absolute top-0 w-1 h-full bg-slate-800 z-10"
+            className="absolute top-0 w-1 h-full bg-slate-800 dark:bg-slate-300 z-10"
             style={{ left: `${breakEvenPosition()}%` }}
           >
-            <div className="absolute -top-6 left-1/2 -translate-x-1/2 text-xs font-medium text-slate-600 whitespace-nowrap">
+            <div className="absolute -top-6 left-1/2 -translate-x-1/2 text-xs font-medium text-slate-600 dark:text-slate-400 whitespace-nowrap">
               BE: {formatRoas(analysis.breakEvenRoas)}x
             </div>
           </div>
@@ -238,7 +238,7 @@ export function BreakEvenRoasCard({
           {/* Current ROAS indicator */}
           <div
             className={cn(
-              'absolute top-1/2 -translate-y-1/2 w-6 h-6 rounded-full border-2 border-white shadow-lg z-20 flex items-center justify-center',
+              'absolute top-1/2 -translate-y-1/2 w-6 h-6 rounded-full border-2 border-white dark:border-slate-200 shadow-lg z-20 flex items-center justify-center',
               analysis.isProfitable ? 'bg-emerald-500' : 'bg-rose-500'
             )}
             style={{ left: `calc(${getIndicatorPosition()}% - 12px)` }}
@@ -246,7 +246,7 @@ export function BreakEvenRoasCard({
             <div className="w-2 h-2 bg-white rounded-full" />
           </div>
         </div>
-        <div className="flex justify-between text-xs text-slate-400 mt-1">
+        <div className="flex justify-between text-xs text-slate-400 dark:text-slate-500 mt-1">
           <span>0x</span>
           <span>Förlust</span>
           <span>Vinst</span>
@@ -258,26 +258,26 @@ export function BreakEvenRoasCard({
       <div className={cn(
         'p-4 rounded-xl border',
         analysis.isProfitable
-          ? 'bg-emerald-50 border-emerald-200'
-          : 'bg-rose-50 border-rose-200'
+          ? 'bg-emerald-50 border-emerald-200 dark:bg-emerald-900/30 dark:border-emerald-800'
+          : 'bg-rose-50 border-rose-200 dark:bg-rose-900/30 dark:border-rose-800'
       )}>
         <div className="flex items-center justify-between">
           <div>
-            <div className="text-xs text-slate-600 mb-1">
+            <div className="text-xs text-slate-600 dark:text-slate-400 mb-1">
               {analysis.isProfitable ? 'Vinst från annonser' : 'Förlust från annonser'}
             </div>
             <div className={cn(
               'text-2xl font-bold',
-              analysis.isProfitable ? 'text-emerald-700' : 'text-rose-700'
+              analysis.isProfitable ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300'
             )}>
               {analysis.isProfitable ? '+' : ''}{formatCurrency(analysis.adProfit)} kr
             </div>
           </div>
           <div className="text-right">
-            <div className="text-xs text-slate-600 mb-1">Marginal över BE</div>
+            <div className="text-xs text-slate-600 dark:text-slate-400 mb-1">Marginal över BE</div>
             <div className={cn(
               'text-lg font-semibold',
-              analysis.roasMarginPercent >= 0 ? 'text-emerald-600' : 'text-rose-600'
+              analysis.roasMarginPercent >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
             )}>
               {analysis.roasMarginPercent >= 0 ? '+' : ''}{analysis.roasMarginPercent.toFixed(0)}%
             </div>
@@ -287,10 +287,10 @@ export function BreakEvenRoasCard({
 
       {/* Tips */}
       {!analysis.isProfitable && (
-        <div className="mt-4 p-3 bg-amber-50 rounded-lg border border-amber-100">
+        <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-900/30 rounded-lg border border-amber-100 dark:border-amber-800">
           <div className="flex items-start gap-2">
-            <Info className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
-            <div className="text-xs text-amber-800">
+            <Info className="w-4 h-4 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+            <div className="text-xs text-amber-800 dark:text-amber-200">
               <span className="font-medium">Tips:</span> Din ROAS behöver öka med{' '}
               <span className="font-semibold">{formatRoas(Math.abs(analysis.roasDifference))}x</span>{' '}
               för att nå break-even. Överväg att optimera målgrupper, kreativ eller höja priser.

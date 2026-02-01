@@ -115,16 +115,16 @@ export function BreakEvenCard({
         <div className="flex items-center gap-2">
           <div className={cn(
             'w-8 h-8 rounded-lg flex items-center justify-center',
-            analysis.hasReachedBreakEven ? 'bg-emerald-100' : 'bg-amber-100'
+            analysis.hasReachedBreakEven ? 'bg-emerald-100 dark:bg-emerald-900/50' : 'bg-amber-100 dark:bg-amber-900/50'
           )}>
             <Target className={cn(
               'w-4 h-4',
-              analysis.hasReachedBreakEven ? 'text-emerald-600' : 'text-amber-600'
+              analysis.hasReachedBreakEven ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'
             )} />
           </div>
           <div>
-            <h3 className="font-semibold text-slate-800">Break-Even Analys</h3>
-            <p className="text-xs text-slate-500">Nollpunkt för lönsamhet</p>
+            <h3 className="font-semibold text-slate-800 dark:text-slate-100">Break-Even Analys</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Nollpunkt för lönsamhet</p>
           </div>
         </div>
 
@@ -132,8 +132,8 @@ export function BreakEvenCard({
         <div className={cn(
           'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium',
           analysis.hasReachedBreakEven
-            ? 'bg-emerald-50 text-emerald-700'
-            : 'bg-amber-50 text-amber-700'
+            ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300'
+            : 'bg-amber-50 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300'
         )}>
           {analysis.hasReachedBreakEven ? (
             <>
@@ -152,10 +152,10 @@ export function BreakEvenCard({
       {/* Progress bar */}
       <div className="mb-6">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-sm text-slate-600">
+          <span className="text-sm text-slate-600 dark:text-slate-400">
             {analysis.hasReachedBreakEven ? 'Över nollpunkt' : 'Mot nollpunkt'}
           </span>
-          <span className="text-sm font-medium text-slate-800">
+          <span className="text-sm font-medium text-slate-800 dark:text-slate-200">
             {analysis.progressPercent.toFixed(0)}%
           </span>
         </div>
@@ -180,28 +180,28 @@ export function BreakEvenCard({
       {/* Stats grid */}
       <div className="grid grid-cols-2 gap-4 mb-4">
         {/* Break-even revenue */}
-        <div className="bg-slate-50 rounded-lg p-3">
-          <div className="text-xs text-slate-500 mb-1">Nollpunkt</div>
-          <div className="text-lg font-bold text-slate-800">
+        <div className="bg-slate-50 dark:bg-slate-800/50 rounded-lg p-3">
+          <div className="text-xs text-slate-500 dark:text-slate-400 mb-1">Nollpunkt</div>
+          <div className="text-lg font-bold text-slate-800 dark:text-slate-100">
             {formatCurrency(analysis.breakEvenRevenue)} kr
           </div>
-          <div className="text-xs text-slate-400">
+          <div className="text-xs text-slate-400 dark:text-slate-500">
             ~{analysis.breakEvenOrders} ordrar
           </div>
         </div>
 
         {/* Revenue to break-even */}
-        <div className="bg-slate-50 rounded-lg p-3">
-          <div className="text-xs text-slate-500 mb-1">
+        <div className="bg-slate-50 dark:bg-slate-800/50 rounded-lg p-3">
+          <div className="text-xs text-slate-500 dark:text-slate-400 mb-1">
             {analysis.hasReachedBreakEven ? 'Över nollpunkt' : 'Kvar till nollpunkt'}
           </div>
           <div className={cn(
             'text-lg font-bold',
-            analysis.hasReachedBreakEven ? 'text-emerald-600' : 'text-amber-600'
+            analysis.hasReachedBreakEven ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'
           )}>
             {analysis.hasReachedBreakEven ? '+' : ''}{formatCurrency(Math.abs(profit))} kr
           </div>
-          <div className="text-xs text-slate-400">
+          <div className="text-xs text-slate-400 dark:text-slate-500">
             {analysis.hasReachedBreakEven
               ? `${analysis.ordersToBreakEven === 0 ? 'Över målet' : ''}`
               : `${analysis.ordersToBreakEven} ordrar till`
@@ -211,27 +211,27 @@ export function BreakEvenCard({
       </div>
 
       {/* Projections */}
-      <div className="border-t border-slate-100 pt-4">
+      <div className="border-t border-slate-100 dark:border-slate-700 pt-4">
         <div className="flex items-center gap-2 mb-3">
-          <TrendingUp className="w-4 h-4 text-slate-400" />
-          <span className="text-sm font-medium text-slate-700">Prognos</span>
+          <TrendingUp className="w-4 h-4 text-slate-400 dark:text-slate-500" />
+          <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Prognos</span>
         </div>
 
         <div className="grid grid-cols-2 gap-4">
           {/* Daily average */}
           <div>
-            <div className="text-xs text-slate-500 mb-1">Daglig omsättning</div>
-            <div className="text-sm font-semibold text-slate-800">
+            <div className="text-xs text-slate-500 dark:text-slate-400 mb-1">Daglig omsättning</div>
+            <div className="text-sm font-semibold text-slate-800 dark:text-slate-200">
               {formatCurrency(analysis.dailyRevenue)} kr/dag
             </div>
           </div>
 
           {/* Daily profit */}
           <div>
-            <div className="text-xs text-slate-500 mb-1">Daglig vinst</div>
+            <div className="text-xs text-slate-500 dark:text-slate-400 mb-1">Daglig vinst</div>
             <div className={cn(
               'text-sm font-semibold',
-              analysis.dailyProfit >= 0 ? 'text-emerald-600' : 'text-rose-600'
+              analysis.dailyProfit >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
             )}>
               {analysis.dailyProfit >= 0 ? '+' : ''}{formatCurrency(analysis.dailyProfit)} kr/dag
             </div>
@@ -239,10 +239,10 @@ export function BreakEvenCard({
 
           {/* Projected end-of-period */}
           <div>
-            <div className="text-xs text-slate-500 mb-1">Beräknad slutvinst</div>
+            <div className="text-xs text-slate-500 dark:text-slate-400 mb-1">Beräknad slutvinst</div>
             <div className={cn(
               'text-sm font-semibold',
-              analysis.projectedProfit >= 0 ? 'text-emerald-600' : 'text-rose-600'
+              analysis.projectedProfit >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
             )}>
               {analysis.projectedProfit >= 0 ? '+' : ''}{formatCurrency(analysis.projectedProfit)} kr
             </div>
@@ -250,11 +250,11 @@ export function BreakEvenCard({
 
           {/* Days remaining or to break-even */}
           <div>
-            <div className="text-xs text-slate-500 mb-1 flex items-center gap-1">
+            <div className="text-xs text-slate-500 dark:text-slate-400 mb-1 flex items-center gap-1">
               <Clock className="w-3 h-3" />
               {analysis.hasReachedBreakEven ? 'Dagar kvar' : 'Till nollpunkt'}
             </div>
-            <div className="text-sm font-semibold text-slate-800">
+            <div className="text-sm font-semibold text-slate-800 dark:text-slate-200">
               {analysis.hasReachedBreakEven
                 ? `${analysis.remainingDays} dagar`
                 : analysis.daysToBreakEven !== null
@@ -268,10 +268,10 @@ export function BreakEvenCard({
 
       {/* Advice */}
       {!analysis.hasReachedBreakEven && analysis.ordersToBreakEven > 0 && (
-        <div className="mt-4 p-3 bg-amber-50 rounded-lg border border-amber-100">
+        <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-900/30 rounded-lg border border-amber-100 dark:border-amber-800">
           <div className="flex items-start gap-2">
-            <AlertCircle className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
-            <div className="text-xs text-amber-800">
+            <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+            <div className="text-xs text-amber-800 dark:text-amber-200">
               <span className="font-medium">Tips:</span> Du behöver{' '}
               <span className="font-semibold">{analysis.ordersToBreakEven}</span> fler ordrar
               (ca {formatCurrency(analysis.revenueToBreakEven)} kr) för att nå nollpunkt denna period.
@@ -304,17 +304,17 @@ export function MiniBreakEven({ profit, costs, avgMargin, className }: MiniBreak
     <div className={cn('flex items-center gap-3', className)}>
       <div className={cn(
         'w-8 h-8 rounded-full flex items-center justify-center',
-        hasReached ? 'bg-emerald-100' : 'bg-amber-100'
+        hasReached ? 'bg-emerald-100 dark:bg-emerald-900/50' : 'bg-amber-100 dark:bg-amber-900/50'
       )}>
         <Target className={cn(
           'w-4 h-4',
-          hasReached ? 'text-emerald-600' : 'text-amber-600'
+          hasReached ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'
         )} />
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between mb-1">
-          <span className="text-xs text-slate-500">Nollpunkt</span>
-          <span className="text-xs font-medium text-slate-700">{progress.toFixed(0)}%</span>
+          <span className="text-xs text-slate-500 dark:text-slate-400">Nollpunkt</span>
+          <span className="text-xs font-medium text-slate-700 dark:text-slate-300">{progress.toFixed(0)}%</span>
         </div>
         <Progress
           value={progress}

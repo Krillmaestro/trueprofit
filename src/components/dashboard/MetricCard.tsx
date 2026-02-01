@@ -83,21 +83,21 @@ function getTrendColor(direction: TrendDirection, variant: MetricVariant): strin
   if (variant === 'danger') {
     switch (direction) {
       case 'up':
-        return 'text-red-600'
+        return 'text-red-600 dark:text-red-400'
       case 'down':
-        return 'text-emerald-600'
+        return 'text-emerald-600 dark:text-emerald-400'
       default:
-        return 'text-slate-500'
+        return 'text-slate-500 dark:text-slate-400'
     }
   }
 
   switch (direction) {
     case 'up':
-      return 'text-emerald-600'
+      return 'text-emerald-600 dark:text-emerald-400'
     case 'down':
-      return 'text-red-600'
+      return 'text-red-600 dark:text-red-400'
     default:
-      return 'text-slate-500'
+      return 'text-slate-500 dark:text-slate-400'
   }
 }
 
@@ -163,7 +163,7 @@ export const MetricCard = memo(function MetricCard({
     return (
       <div
         className={cn(
-          'bg-white rounded-lg border border-slate-200',
+          'bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700',
           config.padding,
           variantStyles[variant],
           className
@@ -184,8 +184,8 @@ export const MetricCard = memo(function MetricCard({
   return (
     <div
       className={cn(
-        'bg-white rounded-lg border border-slate-200',
-        'transition-shadow duration-200 hover:shadow-sm',
+        'bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700',
+        'transition-shadow duration-200 hover:shadow-sm dark:hover:shadow-slate-800/50',
         config.padding,
         variantStyles[variant],
         className
@@ -195,7 +195,7 @@ export const MetricCard = memo(function MetricCard({
       <div className="flex items-center justify-between mb-2">
         <span
           className={cn(
-            'font-medium text-slate-500 uppercase tracking-wide',
+            'font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide',
             config.labelSize
           )}
         >
@@ -204,14 +204,14 @@ export const MetricCard = memo(function MetricCard({
 
         <div className="flex items-center gap-1">
           {icon && (
-            <span className="text-slate-400">{icon}</span>
+            <span className="text-slate-400 dark:text-slate-500">{icon}</span>
           )}
           {tooltip && (
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
-                    className="text-slate-400 hover:text-slate-600 transition-colors"
+                    className="text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300 transition-colors"
                     aria-label={`Mer information om ${label}`}
                   >
                     <Info className="w-4 h-4" aria-hidden="true" />
@@ -229,7 +229,7 @@ export const MetricCard = memo(function MetricCard({
       {/* Value */}
       <div
         className={cn(
-          'font-semibold text-slate-900 tracking-tight',
+          'font-semibold text-slate-900 dark:text-slate-100 tracking-tight',
           config.valueSize
         )}
       >
@@ -244,7 +244,7 @@ export const MetricCard = memo(function MetricCard({
             {change > 0 && '+'}
             {change.toFixed(1)}%
           </span>
-          <span className={cn('text-slate-500', config.changeSize)}>
+          <span className={cn('text-slate-500 dark:text-slate-400', config.changeSize)}>
             {changeLabel}
           </span>
         </div>
@@ -317,7 +317,7 @@ export const HeroMetricCard = memo(function HeroMetricCard({
     return (
       <div
         className={cn(
-          'bg-white rounded-xl border border-slate-200 p-6',
+          'bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-6',
           className
         )}
       >
@@ -332,29 +332,29 @@ export const HeroMetricCard = memo(function HeroMetricCard({
 
   // Variant background styles
   const variantBg = {
-    default: 'bg-white',
-    success: 'bg-gradient-to-br from-emerald-50 to-white border-emerald-200',
-    warning: 'bg-gradient-to-br from-amber-50 to-white border-amber-200',
-    danger: 'bg-gradient-to-br from-red-50 to-white border-red-200',
+    default: 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700',
+    success: 'bg-gradient-to-br from-emerald-50 to-white dark:from-emerald-900/30 dark:to-slate-900 border-emerald-200 dark:border-emerald-800',
+    warning: 'bg-gradient-to-br from-amber-50 to-white dark:from-amber-900/30 dark:to-slate-900 border-amber-200 dark:border-amber-800',
+    danger: 'bg-gradient-to-br from-red-50 to-white dark:from-red-900/30 dark:to-slate-900 border-red-200 dark:border-red-800',
   }
 
   return (
     <div
       className={cn(
         'rounded-xl border p-6',
-        'transition-shadow duration-200 hover:shadow-md',
+        'transition-shadow duration-200 hover:shadow-md dark:hover:shadow-slate-800/50',
         variantBg[variant],
         className
       )}
     >
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
-        <span className="text-sm font-medium text-slate-600">{label}</span>
-        {icon && <span className="text-slate-400">{icon}</span>}
+        <span className="text-sm font-medium text-slate-600 dark:text-slate-400">{label}</span>
+        {icon && <span className="text-slate-400 dark:text-slate-500">{icon}</span>}
       </div>
 
       {/* Large Value */}
-      <div className="text-4xl font-bold text-slate-900 tracking-tight mb-2">
+      <div className="text-4xl font-bold text-slate-900 dark:text-slate-100 tracking-tight mb-2">
         {formatValue(value, formattedValue)}
       </div>
 
@@ -367,11 +367,11 @@ export const HeroMetricCard = memo(function HeroMetricCard({
               {change > 0 && '+'}
               {change.toFixed(1)}%
             </span>
-            <span className="text-sm text-slate-500">{changeLabel}</span>
+            <span className="text-sm text-slate-500 dark:text-slate-400">{changeLabel}</span>
           </div>
         )}
         {description && (
-          <span className="text-sm text-slate-500">{description}</span>
+          <span className="text-sm text-slate-500 dark:text-slate-400">{description}</span>
         )}
       </div>
     </div>
