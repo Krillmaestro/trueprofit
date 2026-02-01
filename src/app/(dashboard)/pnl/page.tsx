@@ -17,25 +17,30 @@ interface PnLData {
   period: string
   dateRange: { start: string; end: string }
   revenue: {
-    grossRevenue?: number  // New: Matches Shopify "Omsättning" (inkl VAT)
+    omsattning?: number    // Shopify "Omsättning" (inkl VAT)
+    grossRevenue?: number  // Legacy: Matches Shopify "Omsättning" (inkl VAT)
     grossSales: number     // Legacy fallback
-    vat?: number           // VAT amount (pass-through)
+    vat?: number           // VAT amount
     discounts: number
     returns: number
     shippingRevenue?: number  // What customer paid for shipping
     shipping: number       // Legacy fallback
     tax: number
-    revenueExVat?: number  // Revenue excluding VAT (basis for profit)
+    revenueExVat?: number  // Revenue excluding VAT
     netRevenue: number     // Legacy fallback
   }
   cogs: {
     productCosts: number
-    shippingCosts: number  // Our ACTUAL shipping cost (from tiers)
+    shippingCosts?: number  // Our ACTUAL shipping cost (from tiers) - may be in operatingExpenses.fulfillment
     totalCOGS: number
   }
   grossProfit: number
   grossMargin: number
   operatingExpenses: {
+    fulfillment?: {
+      shippingCosts: number
+      total: number
+    }
     marketing: {
       byPlatform: Record<string, number>
       total: number
@@ -193,7 +198,7 @@ export default function PnLPage() {
       [''],
       ['COGS (Varukostnad)'],
       ['Produktkostnader', -pnlData.cogs.productCosts],
-      ['Fraktkostnader', -pnlData.cogs.shippingCosts],
+      ['Fraktkostnader', -(pnlData.cogs.shippingCosts || pnlData.operatingExpenses.fulfillment?.shippingCosts || 0)],
       ['Total COGS', -pnlData.cogs.totalCOGS],
       [''],
       ['BRUTTOVINST', pnlData.grossProfit],
@@ -356,52 +361,55 @@ export default function PnLPage() {
           <div className="space-y-6">
             {/* Revenue Section */}
             <div>
-              <h3 className="text-lg font-semibold text-slate-800 mb-3 flex items-center">
+              <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-200 mb-3 flex items-center">
                 <DollarSign className="w-5 h-5 mr-2 text-blue-500" />
                 Intäkter
               </h3>
               <div className="space-y-2 pl-7">
-                <div className="flex justify-between py-2 border-b border-slate-100">
-                  <span className="text-slate-600">Omsättning (inkl. moms)</span>
-                  <span className="font-medium">{formatCurrency(pnlData.revenue.grossRevenue || pnlData.revenue.grossSales)}</span>
+                <div className="flex justify-between py-2 border-b border-slate-100 dark:border-slate-700">
+                  <span className="text-slate-600 dark:text-slate-400">Omsättning (inkl. moms)</span>
+                  <span className="font-medium dark:text-slate-200">{formatCurrency(pnlData.revenue.omsattning || pnlData.revenue.grossRevenue || pnlData.revenue.grossSales)}</span>
                 </div>
-                <div className="flex justify-between py-2 border-b border-slate-100">
-                  <span className="text-slate-600">Moms (pass-through)</span>
-                  <span className="font-medium text-slate-500">-{formatCurrency(pnlData.revenue.vat || pnlData.revenue.tax)}</span>
+                <div className="flex justify-between py-2 border-b border-slate-100 dark:border-slate-700">
+                  <span className="text-slate-600 dark:text-slate-400">Moms (kostnad)</span>
+                  <span className="font-medium text-red-600">{formatCurrency(-(pnlData.revenue.vat || pnlData.revenue.tax || 0))}</span>
                 </div>
-                <div className="flex justify-between py-2 border-b border-slate-100">
-                  <span className="text-slate-600">Rabatter</span>
+                <div className="flex justify-between py-2 border-b border-slate-100 dark:border-slate-700">
+                  <span className="text-slate-600 dark:text-slate-400">Rabatter</span>
                   <span className="font-medium text-red-600">{formatCurrency(pnlData.revenue.discounts)}</span>
                 </div>
-                <div className="flex justify-between py-2 border-b border-slate-100">
-                  <span className="text-slate-600">Returer & Återbetalningar</span>
+                <div className="flex justify-between py-2 border-b border-slate-100 dark:border-slate-700">
+                  <span className="text-slate-600 dark:text-slate-400">Returer & Återbetalningar</span>
                   <span className="font-medium text-red-600">{formatCurrency(pnlData.revenue.returns)}</span>
                 </div>
-                <div className="flex justify-between py-2 bg-blue-50 px-3 rounded-lg font-semibold">
-                  <span>Nettoomsättning (ex. moms)</span>
-                  <span>{formatCurrency(pnlData.revenue.revenueExVat || pnlData.revenue.netRevenue)}</span>
+                <div className="flex justify-between py-2 bg-blue-50 dark:bg-blue-900/30 px-3 rounded-lg font-semibold">
+                  <span className="dark:text-slate-200">Nettoomsättning (ex. moms)</span>
+                  <span className="dark:text-slate-200">{formatCurrency(pnlData.revenue.revenueExVat || pnlData.revenue.netRevenue)}</span>
                 </div>
               </div>
             </div>
 
             {/* COGS Section */}
             <div>
-              <h3 className="text-lg font-semibold text-slate-800 mb-3 flex items-center">
+              <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-200 mb-3 flex items-center">
                 <TrendingDown className="w-5 h-5 mr-2 text-red-500" />
                 Cost of Goods Sold
               </h3>
               <div className="space-y-2 pl-7">
-                <div className="flex justify-between py-2 border-b border-slate-100">
-                  <span className="text-slate-600">Product Costs</span>
-                  <span className="font-medium text-red-600">-{formatCurrency(pnlData.cogs.productCosts)}</span>
+                <div className="flex justify-between py-2 border-b border-slate-100 dark:border-slate-700">
+                  <span className="text-slate-600 dark:text-slate-400">Product Costs</span>
+                  <span className="font-medium text-red-600">{formatCurrency(-(pnlData.cogs.productCosts || 0))}</span>
                 </div>
-                <div className="flex justify-between py-2 border-b border-slate-100">
-                  <span className="text-slate-600">Shipping Costs</span>
-                  <span className="font-medium text-red-600">-{formatCurrency(pnlData.cogs.shippingCosts)}</span>
-                </div>
-                <div className="flex justify-between py-2 bg-red-50 px-3 rounded-lg font-semibold">
-                  <span>Total COGS</span>
-                  <span className="text-red-600">-{formatCurrency(pnlData.cogs.totalCOGS)}</span>
+                {/* Shipping costs - check both cogs and operatingExpenses.fulfillment */}
+                {(pnlData.cogs.shippingCosts || pnlData.operatingExpenses.fulfillment?.shippingCosts) ? (
+                  <div className="flex justify-between py-2 border-b border-slate-100 dark:border-slate-700">
+                    <span className="text-slate-600 dark:text-slate-400">Shipping Costs</span>
+                    <span className="font-medium text-red-600">{formatCurrency(-(pnlData.cogs.shippingCosts || pnlData.operatingExpenses.fulfillment?.shippingCosts || 0))}</span>
+                  </div>
+                ) : null}
+                <div className="flex justify-between py-2 bg-red-50 dark:bg-red-900/30 px-3 rounded-lg font-semibold">
+                  <span className="dark:text-slate-200">Total COGS</span>
+                  <span className="text-red-600">{formatCurrency(-(pnlData.cogs.totalCOGS || 0))}</span>
                 </div>
               </div>
             </div>

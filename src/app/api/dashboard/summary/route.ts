@@ -394,22 +394,21 @@ async function computeDashboardSummary(
   const totalOperatingCosts = fixedCosts + variableCosts + salaries + oneTimeCosts + totalAdSpend
 
   // ===========================================
-  // TOTAL COSTS CALCULATION
+  // TOTAL COSTS CALCULATION - MOMS SOM KOSTNAD
   // ===========================================
-  // Total costs = COGS + Shipping Cost + Payment Fees + Operating Costs
-  // NOTE: VAT is NOT a cost for profit calculation - it's collected from customer
-  //       and paid to Skatteverket, it's a pass-through
-  const totalCosts = totalCOGS + totalShippingCost + totalPaymentFees + totalOperatingCosts
+  // Total costs = COGS + Shipping Cost + Payment Fees + Operating Costs + MOMS
+  // USER REQUEST: Moms behandlas som en vanlig kostnad
+  // Revenue = Omsättning INKL moms
+  const totalCosts = totalCOGS + totalShippingCost + totalPaymentFees + totalOperatingCosts + totalTax
 
   // ===========================================
   // FINAL NET PROFIT
   // ===========================================
-  // Net Profit = Revenue ex VAT - Total Costs
-  // We use revenueExVat because VAT is a pass-through, not our revenue
-  const finalNetProfit = revenueExVat - totalCosts
+  // Net Profit = Omsättning (inkl moms) - Total Costs (inkl moms)
+  const finalNetProfit = omsattning - totalCosts
 
-  // Margin based on revenue ex VAT (correct accounting)
-  const finalNetMargin = safeMargin(finalNetProfit, revenueExVat)
+  // Margin based on omsättning (inkl moms)
+  const finalNetMargin = safeMargin(finalNetProfit, omsattning)
 
   // ROAS calculations
   const roas = totalAdSpend > 0 ? adRevenue / totalAdSpend : 0
@@ -478,8 +477,9 @@ async function computeDashboardSummary(
   // ===========================================
 
   // Cost breakdown for visualization
-  // Note: VAT is NOT included here as it's a pass-through, not a real cost
+  // MOMS är nu inkluderad som kostnad per användarens önskan
   const costBreakdown = [
+    { name: 'Moms', value: roundCurrency(totalTax), color: '#ef4444' },
     { name: 'COGS', value: roundCurrency(totalCOGS), color: '#3b82f6' },
     { name: 'Ad Spend', value: roundCurrency(totalAdSpend), color: '#8b5cf6' },
     { name: 'Fraktkostnad', value: roundCurrency(totalShippingCost), color: '#ec4899' },

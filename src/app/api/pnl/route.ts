@@ -382,49 +382,58 @@ async function computePnLReport(
   const totalAdSpend = Object.values(adSpendByPlatform).reduce((sum, v) => sum + v, 0)
 
   // ===========================================
-  // REVENUE CALCULATIONS - MATCHING SHOPIFY ANALYTICS
+  // REVENUE CALCULATIONS - USER REQUEST: MOMS SOM KOSTNAD
   // ===========================================
   //
+  // Användarens önskan:
+  // - Revenue = Omsättning INKL moms (vad vi får in från Shopify)
+  // - Moms = en KOSTNAD (inte pass-through)
+  // - Nettovinst = Omsättning - Moms - alla andra kostnader
+  //
   // Shopify API fields:
-  // - subtotal_price = BRUTTOFÖRSÄLJNING (line items BEFORE discounts, EXCL VAT)
+  // - subtotal_price = BRUTTOFÖRSÄLJNING (line items BEFORE discounts)
   // - total_discounts = RABATTER
   // - total_tax = SKATTER (VAT)
   // - total_shipping_price = FRAKTAVGIFTER
   //
-  // Nettoförsäljning = Bruttoförsäljning - Rabatter - Returer
-  // Omsättning = Nettoförsäljning + Frakt + Moms
-  //
   // ===========================================
 
-  // Calculate Nettoförsäljning (Net Sales)
+  // Calculate Nettoförsäljning (Net Sales) - before shipping and VAT
   const nettoForsaljning = totalSubtotal - totalDiscounts - totalRefunds
 
-  // Calculate Omsättning (matches Shopify Analytics)
+  // Calculate Omsättning (matches Shopify Analytics) - THIS IS OUR REVENUE
+  // Omsättning = Nettoförsäljning + Frakt + Moms
   const omsattning = nettoForsaljning + totalShippingRevenue + totalTax
 
-  // Revenue ex VAT for profit calculations
+  // Revenue ex VAT (for reference)
   const revenueExVat = nettoForsaljning + totalShippingRevenue
 
   // Gross revenue for reference
   const grossRevenue = totalSubtotal + totalShippingRevenue
   const netRevenue = grossRevenue - totalDiscounts - totalRefunds
 
-  // COGS = ONLY product costs (shipping is Operating Expense per Swedish accounting)
+  // ===========================================
+  // NEW: MOMS SOM KOSTNAD
+  // ===========================================
+  // COGS = Product costs only
   const totalCOGS = productCosts
-  const grossProfit = simpleGrossProfit(revenueExVat, totalCOGS)
-  const grossMargin = safeMargin(grossProfit, revenueExVat)
 
-  // Operating expenses (includes shipping costs - NOT in COGS!)
+  // Gross profit = Omsättning - Moms - COGS
+  // (Vi räknar moms som en kostnad här)
+  const grossProfit = omsattning - totalTax - totalCOGS
+  const grossMargin = safeMargin(grossProfit, omsattning)
+
+  // Operating expenses (includes shipping costs)
   const totalOperatingExpenses = totalAdSpend + totalPaymentFees + shippingCosts + totalFixedCosts + totalVariableCosts + totalSalaries + totalOneTime
   const operatingProfit = grossProfit - totalOperatingExpenses
-  const operatingMargin = safeMargin(operatingProfit, revenueExVat)
+  const operatingMargin = safeMargin(operatingProfit, omsattning)
 
-  // Total costs (EXCLUDING VAT - VAT is pass-through)
-  const totalCosts = totalCOGS + totalOperatingExpenses
+  // Total costs = COGS + OpEx + Moms
+  const totalCosts = totalCOGS + totalOperatingExpenses + totalTax
 
-  // Net profit = Revenue ex VAT - All Costs
-  const netProfit = revenueExVat - totalCosts
-  const netMargin = safeMargin(netProfit, revenueExVat)
+  // Net profit = Omsättning (inkl moms) - Alla kostnader (inkl moms)
+  const netProfit = omsattning - totalCosts
+  const netMargin = safeMargin(netProfit, omsattning)
 
   // Estimated corporate tax (Swedish 20.6%)
   const taxRate = 0.206
@@ -459,7 +468,8 @@ async function computePnLReport(
       grossRevenue: roundCurrency(omsattning),
       discounts: roundCurrency(-totalDiscounts),
       returns: roundCurrency(-totalRefunds),
-      vat: roundCurrency(-totalTax),
+      vat: roundCurrency(totalTax), // Positive value - will be shown as cost
+      tax: roundCurrency(totalTax), // For legacy support
       netRevenue: roundCurrency(revenueExVat),
     },
 
