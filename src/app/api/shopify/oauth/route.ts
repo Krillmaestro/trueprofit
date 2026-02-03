@@ -3,7 +3,6 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { encrypt } from '@/lib/encryption'
-import { oauthRateLimiter, getRateLimitKey } from '@/lib/rate-limit'
 import { generateStateToken, validateStateToken } from '@/lib/oauth-state'
 import crypto from 'crypto'
 
@@ -32,17 +31,6 @@ export async function GET(request: NextRequest) {
   const code = searchParams.get('code')
   const state = searchParams.get('state')
   const hmac = searchParams.get('hmac')
-
-  // Only apply rate limiting for OAuth initiations (not callbacks)
-  const isCallback = code && hmac
-  if (!isCallback) {
-    const rateLimitKey = getRateLimitKey(request, session.user.id)
-    const rateLimitResult = oauthRateLimiter(rateLimitKey)
-
-    if (rateLimitResult.limited) {
-      return NextResponse.redirect(new URL('/settings/stores?error=rate_limited', APP_URL))
-    }
-  }
 
   // Check if Shopify is configured
   if (!SHOPIFY_API_KEY || !SHOPIFY_API_SECRET) {

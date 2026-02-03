@@ -1,11 +1,11 @@
 /**
- * TrueProfit Idempotent Webhook Handler
- * Ensures webhooks are processed exactly once
+ * TrueProfit Webhook Handler
+ * Handles Shopify webhooks with HMAC verification
  */
 
 import crypto from 'crypto'
 import { prisma } from '@/lib/prisma'
-import { logError, createSafeError, ErrorCodes } from '@/lib/errors/safe-error'
+import { logError, createSafeError } from '@/lib/errors/safe-error'
 
 // ===========================================
 // TYPES
@@ -68,8 +68,12 @@ export function verifyWebhookHMAC(
 }
 
 // ===========================================
-// IDEMPOTENCY
+// IDEMPOTENCY (In-memory for simplicity)
 // ===========================================
+
+// Simple in-memory cache for processed webhooks (last 1000)
+const processedWebhooks = new Map<string, number>()
+const MAX_CACHE_SIZE = 1000
 
 /**
  * Generate a unique webhook ID from the payload
@@ -79,7 +83,6 @@ export function generateWebhookId(
   shopDomain: string,
   payload: WebhookPayload
 ): string {
-  // Use payload ID + topic + shop to create unique identifier
   const payloadId = payload.id?.toString() || crypto.randomUUID()
   const components = [topic, shopDomain, payloadId]
 
@@ -91,49 +94,35 @@ export function generateWebhookId(
 }
 
 /**
- * Check if a webhook has already been processed
+ * Check if a webhook has already been processed (in-memory check)
  */
 export async function isWebhookProcessed(webhookId: string): Promise<boolean> {
-  try {
-    const existing = await prisma.webhookLog.findUnique({
-      where: { webhookId },
-      select: { id: true },
-    })
-    return existing !== null
-  } catch (error) {
-    logError(error, { context: 'isWebhookProcessed', webhookId })
-    // On error, assume not processed to avoid data loss
-    return false
-  }
+  return processedWebhooks.has(webhookId)
 }
 
 /**
- * Mark a webhook as processed
+ * Mark a webhook as processed (in-memory)
  */
 export async function markWebhookProcessed(
   webhookId: string,
-  topic: string,
-  storeId: string,
-  payload: unknown,
-  status: 'PROCESSED' | 'FAILED' | 'SKIPPED',
-  errorMessage?: string
+  _topic: string,
+  _storeId: string,
+  _payload: unknown,
+  _status: 'PROCESSED' | 'FAILED' | 'SKIPPED',
+  _errorMessage?: string
 ): Promise<void> {
-  try {
-    await prisma.webhookLog.create({
-      data: {
-        webhookId,
-        topic,
-        storeId,
-        payload: payload as object,
-        status,
-        errorMessage,
-        processedAt: new Date(),
-      },
-    })
-  } catch (error) {
-    // Log but don't throw - webhook was already processed
-    logError(error, { context: 'markWebhookProcessed', webhookId })
+  // Clean up old entries if cache is too large
+  if (processedWebhooks.size >= MAX_CACHE_SIZE) {
+    const entries = Array.from(processedWebhooks.entries())
+    entries.sort((a, b) => a[1] - b[1])
+    // Remove oldest 20%
+    const toRemove = Math.floor(MAX_CACHE_SIZE * 0.2)
+    for (let i = 0; i < toRemove; i++) {
+      processedWebhooks.delete(entries[i][0])
+    }
   }
+
+  processedWebhooks.set(webhookId, Date.now())
 }
 
 // ===========================================
@@ -274,31 +263,5 @@ export async function handleWebhook<T extends WebhookPayload>(
       skipped: false,
       message: safeError.message,
     }
-  }
-}
-
-// ===========================================
-// WEBHOOK CLEANUP
-// ===========================================
-
-/**
- * Clean up old webhook logs (keep last 30 days)
- */
-export async function cleanupWebhookLogs(daysToKeep: number = 30): Promise<number> {
-  const cutoffDate = new Date()
-  cutoffDate.setDate(cutoffDate.getDate() - daysToKeep)
-
-  try {
-    const result = await prisma.webhookLog.deleteMany({
-      where: {
-        processedAt: {
-          lt: cutoffDate,
-        },
-      },
-    })
-    return result.count
-  } catch (error) {
-    logError(error, { context: 'cleanupWebhookLogs' })
-    return 0
   }
 }

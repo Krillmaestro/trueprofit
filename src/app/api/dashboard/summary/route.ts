@@ -226,13 +226,8 @@ async function computeDashboardSummary(
       }
     }
 
-    // ═══════════════════════════════════════════════════════════
-    // ADJUST COGS FOR REFUNDED ITEMS
-    // When items are returned, reverse the COGS to reflect true cost
-    // ═══════════════════════════════════════════════════════════
-    for (const refund of order.refunds || []) {
-      totalCOGS -= toNumber(refund.totalCOGSReversed)
-    }
+    // Note: COGS adjustment for refunds would require tracking which items were refunded
+    // For now, COGS remains based on items sold (refunds reduce revenue but not COGS)
 
     // Calculate shipping cost (our actual cost, NOT what customer paid)
     const storeTiers = storeShippingTiers.get(order.storeId)

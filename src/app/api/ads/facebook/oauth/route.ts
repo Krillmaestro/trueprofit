@@ -3,7 +3,6 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { encrypt } from '@/lib/encryption'
-import { oauthRateLimiter, getRateLimitKey } from '@/lib/rate-limit'
 import { generateStateToken, validateStateToken } from '@/lib/oauth-state'
 import { FacebookAdsClient } from '@/services/ads/facebook'
 
@@ -16,14 +15,6 @@ export async function GET(request: NextRequest) {
 
   if (!session?.user?.id) {
     return NextResponse.redirect(new URL('/login', APP_URL))
-  }
-
-  // Apply rate limiting
-  const rateLimitKey = getRateLimitKey(request, session.user.id)
-  const rateLimitResult = oauthRateLimiter(rateLimitKey)
-
-  if (rateLimitResult.limited) {
-    return NextResponse.redirect(new URL('/ads?error=rate_limited', APP_URL))
   }
 
   const searchParams = request.nextUrl.searchParams
@@ -106,14 +97,48 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(new URL('/ads?error=no_ad_accounts', APP_URL))
     }
 
-    // Get user's team
-    const teamMember = await prisma.teamMember.findFirst({
+    // Get user's team, or create one if it doesn't exist
+    let teamMember = await prisma.teamMember.findFirst({
       where: { userId: session.user.id },
       include: { team: true },
     })
 
     if (!teamMember) {
-      return NextResponse.redirect(new URL('/ads?error=no_team', APP_URL))
+      // Auto-create a team for the user
+      const user = await prisma.user.findUnique({
+        where: { id: session.user.id },
+      })
+
+      const teamSlug = `team-${session.user.id.slice(0, 8)}-${Date.now()}`
+      const team = await prisma.team.create({
+        data: {
+          name: user?.name ? `${user.name}'s Team` : 'My Team',
+          slug: teamSlug,
+          members: {
+            create: {
+              userId: session.user.id,
+              role: 'OWNER',
+            },
+          },
+          settings: {
+            create: {
+              defaultCurrency: 'SEK',
+              timezone: 'Europe/Stockholm',
+              vatRate: 25,
+            },
+          },
+        },
+      })
+
+      teamMember = await prisma.teamMember.findFirst({
+        where: { userId: session.user.id, teamId: team.id },
+        include: { team: true },
+      })
+
+      if (!teamMember) {
+        console.error('Failed to create team for user')
+        return NextResponse.redirect(new URL('/ads?error=team_creation_failed', APP_URL))
+      }
     }
 
     // Calculate token expiry (Facebook long-lived tokens last ~60 days)
