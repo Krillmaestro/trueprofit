@@ -281,8 +281,8 @@ function AdsPageContent() {
       {/* Page Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800">Ad Spend</h1>
-          <p className="text-slate-600">Track advertising spend and ROAS across platforms</p>
+          <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Ad Spend</h1>
+          <p className="text-slate-600 dark:text-slate-400">Track advertising spend and ROAS across platforms</p>
         </div>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
@@ -375,8 +375,8 @@ function AdsPageContent() {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-slate-600">Total Ad Spend</p>
-                <p className="text-2xl font-bold text-slate-800">
+                <p className="text-sm text-slate-600 dark:text-slate-400">Total Ad Spend</p>
+                <p className="text-2xl font-bold text-slate-800 dark:text-slate-100">
                   {displayTotalSpend.toLocaleString('sv-SE')} kr
                 </p>
               </div>
@@ -389,8 +389,8 @@ function AdsPageContent() {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-slate-600">Ad Revenue</p>
-                <p className="text-2xl font-bold text-green-600">
+                <p className="text-sm text-slate-600 dark:text-slate-400">Ad Revenue</p>
+                <p className="text-2xl font-bold text-green-600 dark:text-green-400">
                   {displayTotalRevenue.toLocaleString('sv-SE')} kr
                 </p>
               </div>
@@ -403,8 +403,8 @@ function AdsPageContent() {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-slate-600">Overall ROAS</p>
-                <p className="text-2xl font-bold text-slate-800">{displayOverallRoas.toFixed(2)}x</p>
+                <p className="text-sm text-slate-600 dark:text-slate-400">Overall ROAS</p>
+                <p className="text-2xl font-bold text-slate-800 dark:text-slate-100">{displayOverallRoas.toFixed(2)}x</p>
               </div>
               <Target className="h-8 w-8 text-purple-500 opacity-50" />
             </div>
@@ -415,8 +415,8 @@ function AdsPageContent() {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-slate-600">Conversions</p>
-                <p className="text-2xl font-bold text-slate-800">{displayTotalConversions}</p>
+                <p className="text-sm text-slate-600 dark:text-slate-400">Conversions</p>
+                <p className="text-2xl font-bold text-slate-800 dark:text-slate-100">{displayTotalConversions}</p>
               </div>
               <BarChart3 className="h-8 w-8 text-blue-500 opacity-50" />
             </div>
@@ -439,8 +439,8 @@ function AdsPageContent() {
                     <Icon />
                   </div>
                   <div>
-                    <p className="text-sm text-slate-600">{config.name}</p>
-                    <p className="text-xl font-bold text-slate-800">
+                    <p className="text-sm text-slate-600 dark:text-slate-400">{config.name}</p>
+                    <p className="text-xl font-bold text-slate-800 dark:text-slate-100">
                       {spend > 0 ? `${spend.toLocaleString('sv-SE')} kr` : '-'}
                     </p>
                   </div>
@@ -465,8 +465,8 @@ function AdsPageContent() {
           ) : adAccounts.length === 0 ? (
             <div className="text-center py-8">
               <Target className="h-12 w-12 text-slate-400 mx-auto mb-4" />
-              <p className="text-slate-600">No ad accounts connected yet</p>
-              <p className="text-sm text-slate-500 mt-1">
+              <p className="text-slate-600 dark:text-slate-300">No ad accounts connected yet</p>
+              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
                 Connect your Facebook or Google Ads account to start tracking performance
               </p>
               <Button className="mt-4" onClick={() => setDialogOpen(true)}>
@@ -483,15 +483,15 @@ function AdsPageContent() {
                 return (
                   <div
                     key={account.id}
-                    className="flex items-center justify-between p-4 bg-slate-50 rounded-lg"
+                    className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800 rounded-lg"
                   >
                     <div className="flex items-center gap-3">
                       <div className={`p-2 rounded-lg ${config.bgColor} ${config.textColor}`}>
                         <Icon />
                       </div>
                       <div>
-                        <p className="font-medium">{account.accountName || `Account ${account.platformAccountId}`}</p>
-                        <p className="text-sm text-slate-500">
+                        <p className="font-medium text-slate-800 dark:text-slate-100">{account.accountName || `Account ${account.platformAccountId}`}</p>
+                        <p className="text-sm text-slate-500 dark:text-slate-400">
                           {account.lastSyncAt
                             ? `Last sync: ${new Date(account.lastSyncAt).toLocaleString('sv-SE')}`
                             : 'Never synced'}
@@ -568,21 +568,21 @@ function AdsPageContent() {
                         <div className={`p-1.5 rounded ${config.bgColor} ${config.textColor}`}>
                           <Icon />
                         </div>
-                        <span className="font-medium">{campaign.campaignName || 'Unknown Campaign'}</span>
+                        <span className="font-medium text-slate-800 dark:text-slate-100">{campaign.campaignName || 'Unknown Campaign'}</span>
                       </div>
                     </TableCell>
-                    <TableCell className="text-right text-red-600">
+                    <TableCell className="text-right text-red-600 dark:text-red-400">
                       -{campaign.spend.toLocaleString('sv-SE')} kr
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-right text-slate-700 dark:text-slate-300">
                       {campaign.impressions.toLocaleString('sv-SE')}
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-right text-slate-700 dark:text-slate-300">
                       {campaign.clicks.toLocaleString('sv-SE')}
                     </TableCell>
-                    <TableCell className="text-right">{campaign.cpc.toFixed(2)} kr</TableCell>
-                    <TableCell className="text-right">{campaign.conversions}</TableCell>
-                    <TableCell className="text-right font-medium text-green-600">
+                    <TableCell className="text-right text-slate-700 dark:text-slate-300">{campaign.cpc.toFixed(2)} kr</TableCell>
+                    <TableCell className="text-right text-slate-700 dark:text-slate-300">{campaign.conversions}</TableCell>
+                    <TableCell className="text-right font-medium text-green-600 dark:text-green-400">
                       {campaign.revenue.toLocaleString('sv-SE')} kr
                     </TableCell>
                     <TableCell className="text-right">
