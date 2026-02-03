@@ -1,6 +1,3 @@
-// TrueProfit - Complete Database Schema
-// Profit tracking SaaS for Shopify stores
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -10,25 +7,20 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ===========================================
-// AUTHENTICATION (NextAuth.js)
-// ===========================================
-
 model Account {
   id                String  @id @default(cuid())
   userId            String  @map("user_id")
   type              String
   provider          String
   providerAccountId String  @map("provider_account_id")
-  refresh_token     String? @db.Text
-  access_token      String? @db.Text
+  refresh_token     String?
+  access_token      String?
   expires_at        Int?
   token_type        String?
   scope             String?
-  id_token          String? @db.Text
+  id_token          String?
   session_state     String?
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
   @@map("accounts")
@@ -39,8 +31,7 @@ model Session {
   sessionToken String   @unique @map("session_token")
   userId       String   @map("user_id")
   expires      DateTime
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("sessions")
 }
@@ -54,44 +45,38 @@ model VerificationToken {
   @@map("verification_tokens")
 }
 
-// ===========================================
-// USER & ORGANIZATION
-// ===========================================
-
 model User {
-  id            String    @id @default(cuid())
-  email         String    @unique
-  emailVerified DateTime? @map("email_verified")
-  passwordHash  String?   @map("password_hash")
+  id            String       @id @default(cuid())
+  email         String       @unique
+  emailVerified DateTime?    @map("email_verified")
+  passwordHash  String?      @map("password_hash")
   name          String?
   image         String?
-  createdAt     DateTime  @default(now()) @map("created_at")
-  updatedAt     DateTime  @updatedAt @map("updated_at")
-
-  accounts    Account[]
-  sessions    Session[]
-  teamMembers TeamMember[]
-  auditLogs   AuditLog[]
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
+  accounts      Account[]
+  auditLogs     AuditLog[]
+  sessions      Session[]
+  teamMembers   TeamMember[]
 
   @@map("users")
 }
 
 model Team {
-  id        String   @id @default(cuid())
-  name      String
-  slug      String   @unique
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  members        TeamMember[]
-  stores         Store[]
-  customCosts    CustomCost[]
-  costCategories CostCategory[]
-  bankAccounts   BankAccount[]
+  id             String           @id @default(cuid())
+  name           String
+  slug           String           @unique
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
   adAccounts     AdAccount[]
-  settings       TeamSettings?
-  invitations    TeamInvitation[]
+  bankAccounts   BankAccount[]
   cogsZones      COGSZone[]
+  costCategories CostCategory[]
+  customCosts    CustomCost[]
+  stores         Store[]
+  invitations    TeamInvitation[]
+  members        TeamMember[]
+  settings       TeamSettings?
 
   @@map("teams")
 }
@@ -103,9 +88,8 @@ model TeamMember {
   role      TeamRole @default(MEMBER)
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
-
-  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([teamId, userId])
   @@map("team_members")
@@ -120,8 +104,7 @@ model TeamInvitation {
   status    InvitationStatus @default(PENDING)
   expiresAt DateTime         @map("expires_at")
   createdAt DateTime         @default(now()) @map("created_at")
-
-  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  team      Team             @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
   @@unique([teamId, email])
   @@map("team_invitations")
@@ -138,10 +121,554 @@ model TeamSettings {
   numberFormat    String   @default("sv-SE") @map("number_format")
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
-
-  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  team            Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
   @@map("team_settings")
+}
+
+model Store {
+  id                          String              @id @default(cuid())
+  teamId                      String              @map("team_id")
+  name                        String
+  shopifyDomain               String              @unique @map("shopify_domain")
+  shopifyAccessTokenEncrypted String?             @map("shopify_access_token_encrypted")
+  shopifyScopes               String[]            @map("shopify_scopes")
+  currency                    String              @default("SEK")
+  timezone                    String              @default("Europe/Stockholm")
+  isActive                    Boolean             @default(true) @map("is_active")
+  lastSyncAt                  DateTime?           @map("last_sync_at")
+  lastSyncStatus              SyncStatus?         @map("last_sync_status")
+  syncError                   String?             @map("sync_error")
+  webhookId                   String?             @map("webhook_id")
+  createdAt                   DateTime            @default(now()) @map("created_at")
+  updatedAt                   DateTime            @updatedAt @map("updated_at")
+  inventorySnapshots          InventorySnapshot[]
+  orders                      Order[]
+  paymentFeeConfigs           PaymentFeeConfig[]
+  products                    Product[]
+  shippingCostTiers           ShippingCostTier[]
+  team                        Team                @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([teamId])
+  @@map("stores")
+}
+
+model ShippingCostTier {
+  id                    String   @id @default(cuid())
+  storeId               String   @map("store_id")
+  name                  String
+  minItems              Int      @default(1) @map("min_items")
+  maxItems              Int?     @map("max_items")
+  cost                  Decimal  @db.Decimal(14, 2)
+  costPerAdditionalItem Decimal  @default(0) @map("cost_per_additional_item") @db.Decimal(14, 2)
+  maxWeightGrams        Int?     @map("max_weight_grams")
+  shippingZone          String?  @map("shipping_zone")
+  isActive              Boolean  @default(true) @map("is_active")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+  store                 Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@index([storeId])
+  @@index([storeId, minItems])
+  @@map("shipping_cost_tiers")
+}
+
+model Product {
+  id                String           @id @default(cuid())
+  storeId           String           @map("store_id")
+  shopifyProductId  BigInt           @map("shopify_product_id")
+  title             String
+  handle            String?
+  vendor            String?
+  productType       String?          @map("product_type")
+  status            String           @default("active")
+  imageUrl          String?          @map("image_url")
+  createdAt         DateTime         @default(now()) @map("created_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
+  isHiddenFromStock Boolean          @default(false) @map("is_hidden_from_stock")
+  isShippingExempt  Boolean          @default(false) @map("is_shipping_exempt")
+  variants          ProductVariant[]
+  store             Store            @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([storeId, shopifyProductId])
+  @@index([storeId])
+  @@map("products")
+}
+
+model ProductVariant {
+  id                String          @id @default(cuid())
+  productId         String          @map("product_id")
+  shopifyVariantId  BigInt          @map("shopify_variant_id")
+  title             String?
+  sku               String?
+  barcode           String?
+  price             Decimal         @db.Decimal(14, 2)
+  compareAtPrice    Decimal?        @map("compare_at_price") @db.Decimal(14, 2)
+  inventoryQuantity Int             @default(0) @map("inventory_quantity")
+  inventoryItemId   BigInt?         @map("inventory_item_id")
+  weight            Decimal?        @db.Decimal(10, 2)
+  weightUnit        String?         @map("weight_unit")
+  imageUrl          String?         @map("image_url")
+  vatRate           Decimal         @default(25) @map("vat_rate") @db.Decimal(5, 2)
+  createdAt         DateTime        @default(now()) @map("created_at")
+  updatedAt         DateTime        @updatedAt @map("updated_at")
+  orderLineItems    OrderLineItem[]
+  product           Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  cogsEntries       VariantCOGS[]
+
+  @@unique([productId, shopifyVariantId])
+  @@index([productId])
+  @@index([sku])
+  @@map("product_variants")
+}
+
+model VariantCOGS {
+  id            String         @id @default(cuid())
+  variantId     String         @map("variant_id")
+  costPrice     Decimal        @map("cost_price") @db.Decimal(14, 2)
+  zoneId        String?        @map("zone_id")
+  effectiveFrom DateTime       @default(now()) @map("effective_from")
+  effectiveTo   DateTime?      @map("effective_to")
+  source        COGSSource     @default(MANUAL)
+  notes         String?
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+  variant       ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  zone          COGSZone?      @relation(fields: [zoneId], references: [id])
+
+  @@index([variantId])
+  @@index([variantId, effectiveFrom])
+  @@map("variant_cogs")
+}
+
+model COGSZone {
+  id          String        @id @default(cuid())
+  teamId      String        @map("team_id")
+  name        String
+  countries   String[]
+  isDefault   Boolean       @default(false) @map("is_default")
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+  team        Team          @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  cogsEntries VariantCOGS[]
+
+  @@unique([teamId, name])
+  @@map("cogs_zones")
+}
+
+model Order {
+  id                  String             @id @default(cuid())
+  storeId             String             @map("store_id")
+  shopifyOrderId      BigInt             @map("shopify_order_id")
+  orderNumber         String             @map("order_number")
+  orderName           String?            @map("order_name")
+  financialStatus     String?            @map("financial_status")
+  fulfillmentStatus   String?            @map("fulfillment_status")
+  currency            String             @default("SEK")
+  presentmentCurrency String?            @map("presentment_currency")
+  subtotalPrice       Decimal            @map("subtotal_price") @db.Decimal(14, 2)
+  totalDiscounts      Decimal            @default(0) @map("total_discounts") @db.Decimal(14, 2)
+  totalShippingPrice  Decimal            @default(0) @map("total_shipping_price") @db.Decimal(14, 2)
+  totalTax            Decimal            @default(0) @map("total_tax") @db.Decimal(14, 2)
+  totalPrice          Decimal            @map("total_price") @db.Decimal(14, 2)
+  totalCOGS           Decimal            @default(0) @map("total_cogs") @db.Decimal(14, 2)
+  totalShippingCost   Decimal            @default(0) @map("total_shipping_cost") @db.Decimal(14, 2)
+  totalPaymentFees    Decimal            @default(0) @map("total_payment_fees") @db.Decimal(14, 2)
+  totalRefundAmount   Decimal            @default(0) @map("total_refund_amount") @db.Decimal(14, 2)
+  grossProfit         Decimal            @default(0) @map("gross_profit") @db.Decimal(14, 2)
+  netProfit           Decimal            @default(0) @map("net_profit") @db.Decimal(14, 2)
+  profitMargin        Decimal            @default(0) @map("profit_margin") @db.Decimal(6, 4)
+  customerEmail       String?            @map("customer_email")
+  customerFirstName   String?            @map("customer_first_name")
+  customerLastName    String?            @map("customer_last_name")
+  shippingCountry     String?            @map("shipping_country")
+  shippingCity        String?            @map("shipping_city")
+  shopifyCreatedAt    DateTime           @map("shopify_created_at")
+  shopifyUpdatedAt    DateTime           @map("shopify_updated_at")
+  processedAt         DateTime?          @map("processed_at")
+  cancelledAt         DateTime?          @map("cancelled_at")
+  tags                String[]
+  note                String?
+  sourceUrl           String?            @map("source_url")
+  landingSite         String?            @map("landing_site")
+  referringSite       String?            @map("referring_site")
+  createdAt           DateTime           @default(now()) @map("created_at")
+  updatedAt           DateTime           @updatedAt @map("updated_at")
+  lineItems           OrderLineItem[]
+  refunds             OrderRefund[]
+  transactions        OrderTransaction[]
+  store               Store              @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([storeId, shopifyOrderId])
+  @@index([storeId])
+  @@index([shopifyCreatedAt])
+  @@index([storeId, shopifyCreatedAt])
+  @@index([storeId, processedAt])
+  @@map("orders")
+}
+
+model OrderLineItem {
+  id                String          @id @default(cuid())
+  orderId           String          @map("order_id")
+  variantId         String?         @map("variant_id")
+  shopifyLineItemId BigInt          @map("shopify_line_item_id")
+  shopifyProductId  BigInt?         @map("shopify_product_id")
+  shopifyVariantId  BigInt?         @map("shopify_variant_id")
+  title             String
+  variantTitle      String?         @map("variant_title")
+  sku               String?
+  quantity          Int
+  price             Decimal         @db.Decimal(14, 2)
+  totalDiscount     Decimal         @default(0) @map("total_discount") @db.Decimal(14, 2)
+  taxAmount         Decimal         @default(0) @map("tax_amount") @db.Decimal(14, 2)
+  unitCOGS          Decimal         @default(0) @map("unit_cogs") @db.Decimal(14, 2)
+  totalCOGS         Decimal         @default(0) @map("total_cogs") @db.Decimal(14, 2)
+  cogsSource        COGSSource      @default(MANUAL) @map("cogs_source")
+  createdAt         DateTime        @default(now()) @map("created_at")
+  order             Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  variant           ProductVariant? @relation(fields: [variantId], references: [id])
+
+  @@unique([orderId, shopifyLineItemId])
+  @@index([orderId])
+  @@index([variantId])
+  @@map("order_line_items")
+}
+
+model OrderTransaction {
+  id                   String    @id @default(cuid())
+  orderId              String    @map("order_id")
+  shopifyTransactionId BigInt    @map("shopify_transaction_id")
+  kind                 String
+  gateway              String
+  status               String
+  amount               Decimal   @db.Decimal(14, 2)
+  currency             String
+  paymentFee           Decimal   @default(0) @map("payment_fee") @db.Decimal(14, 2)
+  paymentFeeCalculated Boolean   @default(false) @map("payment_fee_calculated")
+  processedAt          DateTime? @map("processed_at")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  order                Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@unique([orderId, shopifyTransactionId])
+  @@index([orderId])
+  @@map("order_transactions")
+}
+
+model OrderRefund {
+  id              String   @id @default(cuid())
+  orderId         String   @map("order_id")
+  shopifyRefundId BigInt   @map("shopify_refund_id")
+  note            String?
+  amount          Decimal  @db.Decimal(14, 2)
+  restock         Boolean  @default(false)
+  processedAt     DateTime @map("processed_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+  order           Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@unique([orderId, shopifyRefundId])
+  @@index([orderId])
+  @@map("order_refunds")
+}
+
+model PaymentFeeConfig {
+  id            String   @id @default(cuid())
+  storeId       String   @map("store_id")
+  gateway       String
+  feeType       FeeType  @map("fee_type")
+  percentageFee Decimal  @default(0) @map("percentage_fee") @db.Decimal(5, 4)
+  fixedFee      Decimal  @default(0) @map("fixed_fee") @db.Decimal(10, 2)
+  currency      String   @default("SEK")
+  isActive      Boolean  @default(true) @map("is_active")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  store         Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([storeId, gateway])
+  @@map("payment_fee_configs")
+}
+
+model CostCategory {
+  id        String       @id @default(cuid())
+  teamId    String       @map("team_id")
+  name      String
+  slug      String
+  icon      String?
+  color     String?
+  isSystem  Boolean      @default(false) @map("is_system")
+  sortOrder Int          @default(0) @map("sort_order")
+  createdAt DateTime     @default(now()) @map("created_at")
+  team      Team         @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  costs     CustomCost[]
+
+  @@unique([teamId, slug])
+  @@map("cost_categories")
+}
+
+model CustomCost {
+  id              String            @id @default(cuid())
+  teamId          String            @map("team_id")
+  storeId         String?           @map("store_id")
+  categoryId      String?           @map("category_id")
+  name            String
+  description     String?
+  costType        CostType          @map("cost_type")
+  amount          Decimal?          @db.Decimal(14, 2)
+  currency        String            @default("SEK")
+  percentageRate  Decimal?          @map("percentage_rate") @db.Decimal(5, 4)
+  recurrenceType  RecurrenceType?   @map("recurrence_type")
+  recurrenceStart DateTime?         @map("recurrence_start")
+  recurrenceEnd   DateTime?         @map("recurrence_end")
+  occurrenceDate  DateTime?         @map("occurrence_date")
+  isActive        Boolean           @default(true) @map("is_active")
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+  entries         CustomCostEntry[]
+  category        CostCategory?     @relation(fields: [categoryId], references: [id])
+  team            Team              @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([teamId])
+  @@index([storeId])
+  @@map("custom_costs")
+}
+
+model CustomCostEntry {
+  id        String     @id @default(cuid())
+  costId    String     @map("cost_id")
+  amount    Decimal    @db.Decimal(14, 2)
+  date      DateTime
+  notes     String?
+  createdAt DateTime   @default(now()) @map("created_at")
+  cost      CustomCost @relation(fields: [costId], references: [id], onDelete: Cascade)
+
+  @@index([costId])
+  @@index([date])
+  @@map("custom_cost_entries")
+}
+
+model BankAccount {
+  id             String            @id @default(cuid())
+  teamId         String            @map("team_id")
+  name           String
+  bankName       String?           @map("bank_name")
+  accountNumber  String?           @map("account_number")
+  currency       String            @default("SEK")
+  currentBalance Decimal           @default(0) @map("current_balance") @db.Decimal(14, 2)
+  isActive       Boolean           @default(true) @map("is_active")
+  createdAt      DateTime          @default(now()) @map("created_at")
+  updatedAt      DateTime          @updatedAt @map("updated_at")
+  team           Team              @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  imports        BankImport[]
+  transactions   BankTransaction[]
+
+  @@unique([teamId, name])
+  @@index([teamId])
+  @@map("bank_accounts")
+}
+
+model BankTransaction {
+  id                 String                   @id @default(cuid())
+  accountId          String                   @map("account_id")
+  importId           String?                  @map("import_id")
+  transactionDate    DateTime                 @map("transaction_date")
+  description        String
+  amount             Decimal                  @db.Decimal(14, 2)
+  balance            Decimal                  @db.Decimal(14, 2)
+  rawText            String?                  @map("raw_text")
+  merchantId         String?                  @map("merchant_id")
+  categoryId         String?                  @map("category_id")
+  normalizedMerchant String?                  @map("normalized_merchant")
+  isIncome           Boolean                  @default(false) @map("is_income")
+  isRecurring        Boolean                  @default(false) @map("is_recurring")
+  isSubscription     Boolean                  @default(false) @map("is_subscription")
+  hasVat             Boolean                  @default(false) @map("has_vat")
+  vatAmount          Decimal?                 @map("vat_amount") @db.Decimal(14, 2)
+  netAmount          Decimal?                 @map("net_amount") @db.Decimal(14, 2)
+  userLabel          String?                  @map("user_label")
+  userNotes          String?                  @map("user_notes")
+  isHidden           Boolean                  @default(false) @map("is_hidden")
+  createdAt          DateTime                 @default(now()) @map("created_at")
+  updatedAt          DateTime                 @updatedAt @map("updated_at")
+  account            BankAccount              @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  category           BankTransactionCategory? @relation(fields: [categoryId], references: [id])
+  import             BankImport?              @relation(fields: [importId], references: [id])
+  merchant           BankMerchant?            @relation(fields: [merchantId], references: [id])
+
+  @@unique([accountId, transactionDate, amount, description])
+  @@index([accountId])
+  @@index([transactionDate])
+  @@index([categoryId])
+  @@map("bank_transactions")
+}
+
+model BankTransactionCategory {
+  id              String             @id @default(cuid())
+  teamId          String?            @map("team_id")
+  name            String
+  slug            String
+  icon            String?
+  color           String?
+  type            BankCategoryType   @default(EXPENSE)
+  hasVat          Boolean            @default(false) @map("has_vat")
+  vatRate         Decimal?           @map("vat_rate") @db.Decimal(5, 2)
+  isVatDeductible Boolean            @default(true) @map("is_vat_deductible")
+  isSystem        Boolean            @default(false) @map("is_system")
+  sortOrder       Int                @default(0) @map("sort_order")
+  createdAt       DateTime           @default(now()) @map("created_at")
+  rules           BankMerchantRule[] @relation("CategoryRules")
+  merchants       BankMerchant[]     @relation("DefaultCategory")
+  transactions    BankTransaction[]
+
+  @@unique([teamId, slug])
+  @@map("bank_transaction_categories")
+}
+
+model BankMerchant {
+  id                String                   @id @default(cuid())
+  teamId            String?                  @map("team_id")
+  normalizedName    String                   @map("normalized_name")
+  displayName       String                   @map("display_name")
+  defaultCategoryId String?                  @map("default_category_id")
+  isSubscription    Boolean                  @default(false) @map("is_subscription")
+  logoUrl           String?                  @map("logo_url")
+  createdAt         DateTime                 @default(now()) @map("created_at")
+  rules             BankMerchantRule[]       @relation("MerchantRules")
+  defaultCategory   BankTransactionCategory? @relation("DefaultCategory", fields: [defaultCategoryId], references: [id])
+  transactions      BankTransaction[]
+
+  @@unique([teamId, normalizedName])
+  @@map("bank_merchants")
+}
+
+model BankMerchantRule {
+  id             String                   @id @default(cuid())
+  teamId         String                   @map("team_id")
+  pattern        String
+  patternType    PatternType              @default(CONTAINS) @map("pattern_type")
+  merchantId     String?                  @map("merchant_id")
+  categoryId     String?                  @map("category_id")
+  merchantName   String?                  @map("merchant_name")
+  isSubscription Boolean                  @default(false) @map("is_subscription")
+  hasVat         Boolean                  @default(false) @map("has_vat")
+  priority       Int                      @default(0)
+  isActive       Boolean                  @default(true) @map("is_active")
+  createdAt      DateTime                 @default(now()) @map("created_at")
+  category       BankTransactionCategory? @relation("CategoryRules", fields: [categoryId], references: [id])
+  merchant       BankMerchant?            @relation("MerchantRules", fields: [merchantId], references: [id])
+
+  @@index([teamId, priority])
+  @@map("bank_merchant_rules")
+}
+
+model BankImport {
+  id             String            @id @default(cuid())
+  accountId      String            @map("account_id")
+  fileName       String            @map("file_name")
+  fileSize       Int?              @map("file_size")
+  status         ImportStatus      @default(PENDING)
+  totalRows      Int               @default(0) @map("total_rows")
+  importedRows   Int               @default(0) @map("imported_rows")
+  skippedRows    Int               @default(0) @map("skipped_rows")
+  errorMessage   String?           @map("error_message")
+  dateRangeStart DateTime?         @map("date_range_start")
+  dateRangeEnd   DateTime?         @map("date_range_end")
+  importedAt     DateTime?         @map("imported_at")
+  createdAt      DateTime          @default(now()) @map("created_at")
+  account        BankAccount       @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  transactions   BankTransaction[]
+
+  @@index([accountId])
+  @@map("bank_imports")
+}
+
+model AdAccount {
+  id                    String      @id @default(cuid())
+  teamId                String      @map("team_id")
+  platform              AdPlatform
+  platformAccountId     String      @map("platform_account_id")
+  accountName           String?     @map("account_name")
+  accessTokenEncrypted  String?     @map("access_token_encrypted")
+  refreshTokenEncrypted String?     @map("refresh_token_encrypted")
+  tokenExpiresAt        DateTime?   @map("token_expires_at")
+  currency              String      @default("USD")
+  isActive              Boolean     @default(true) @map("is_active")
+  lastSyncAt            DateTime?   @map("last_sync_at")
+  lastSyncStatus        SyncStatus? @map("last_sync_status")
+  syncError             String?     @map("sync_error")
+  createdAt             DateTime    @default(now()) @map("created_at")
+  updatedAt             DateTime    @updatedAt @map("updated_at")
+  team                  Team        @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  spends                AdSpend[]
+
+  @@unique([teamId, platform, platformAccountId])
+  @@index([teamId])
+  @@map("ad_accounts")
+}
+
+model AdSpend {
+  id           String    @id @default(cuid())
+  adAccountId  String    @map("ad_account_id")
+  date         DateTime
+  spend        Decimal   @db.Decimal(14, 2)
+  impressions  Int       @default(0)
+  clicks       Int       @default(0)
+  conversions  Int       @default(0)
+  revenue      Decimal   @default(0) @db.Decimal(14, 2)
+  roas         Decimal   @default(0) @db.Decimal(8, 4)
+  cpc          Decimal   @default(0) @db.Decimal(10, 2)
+  cpm          Decimal   @default(0) @db.Decimal(10, 2)
+  currency     String    @default("USD")
+  campaignId   String?   @map("campaign_id")
+  campaignName String?   @map("campaign_name")
+  adSetId      String?   @map("adset_id")
+  adSetName    String?   @map("adset_name")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  adAccount    AdAccount @relation(fields: [adAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([adAccountId, date, campaignId, adSetId])
+  @@index([adAccountId])
+  @@index([date])
+  @@map("ad_spends")
+}
+
+model InventorySnapshot {
+  id               String   @id @default(cuid())
+  storeId          String   @map("store_id")
+  snapshotDate     DateTime @map("snapshot_date")
+  totalProducts    Int      @default(0) @map("total_products")
+  totalVariants    Int      @default(0) @map("total_variants")
+  totalUnits       Int      @default(0) @map("total_units")
+  totalRetailValue Decimal  @default(0) @map("total_retail_value") @db.Decimal(14, 2)
+  totalCOGSValue   Decimal  @default(0) @map("total_cogs_value") @db.Decimal(14, 2)
+  lowStockCount    Int      @default(0) @map("low_stock_count")
+  outOfStockCount  Int      @default(0) @map("out_of_stock_count")
+  inventoryData    Json?    @map("inventory_data")
+  byProductType    Json?    @map("by_product_type")
+  createdAt        DateTime @default(now()) @map("created_at")
+  store            Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([storeId, snapshotDate])
+  @@index([storeId])
+  @@index([snapshotDate])
+  @@map("inventory_snapshots")
+}
+
+model AuditLog {
+  id           String   @id @default(cuid())
+  teamId       String   @map("team_id")
+  userId       String?  @map("user_id")
+  action       String
+  resourceType String   @map("resource_type")
+  resourceId   String?  @map("resource_id")
+  changes      Json?
+  metadata     Json?
+  ipAddress    String?  @map("ip_address")
+  userAgent    String?  @map("user_agent")
+  createdAt    DateTime @default(now()) @map("created_at")
+  user         User?    @relation(fields: [userId], references: [id])
+
+  @@index([teamId, createdAt])
+  @@index([resourceType, resourceId])
+  @@map("audit_logs")
 }
 
 enum TeamRole {
@@ -158,158 +685,11 @@ enum InvitationStatus {
   CANCELLED
 }
 
-// ===========================================
-// SHOPIFY STORE CONNECTION
-// ===========================================
-
-model Store {
-  id                          String      @id @default(cuid())
-  teamId                      String      @map("team_id")
-  name                        String
-  shopifyDomain               String      @unique @map("shopify_domain")
-  shopifyAccessTokenEncrypted String?     @map("shopify_access_token_encrypted")
-  shopifyScopes               String[]    @map("shopify_scopes")
-  currency           String      @default("SEK")
-  timezone           String      @default("Europe/Stockholm")
-  isActive           Boolean     @default(true) @map("is_active")
-  lastSyncAt         DateTime?   @map("last_sync_at")
-  lastSyncStatus     SyncStatus? @map("last_sync_status")
-  syncError          String?     @map("sync_error")
-  webhookId          String?     @map("webhook_id")
-  createdAt          DateTime    @default(now()) @map("created_at")
-  updatedAt          DateTime    @updatedAt @map("updated_at")
-
-  team               Team                @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  products           Product[]
-  orders             Order[]
-  paymentFeeConfigs  PaymentFeeConfig[]
-  inventorySnapshots InventorySnapshot[]
-  shippingCostTiers  ShippingCostTier[]
-  webhookLogs        WebhookLog[]
-
-  @@index([teamId])
-  @@map("stores")
-}
-
-// Shipping cost tiers for bundled shipping calculations
-// Example: 1 item = 32kr, 2 items = 42kr, 3+ items = 52kr
-model ShippingCostTier {
-  id                    String   @id @default(cuid())
-  storeId               String   @map("store_id")
-  name                  String   // e.g., "Standard Shipping", "Express"
-  minItems              Int      @default(1) @map("min_items")
-  maxItems              Int?     @map("max_items") // null = unlimited
-  cost                  Decimal  @db.Decimal(14, 2) // Base cost for this tier
-  costPerAdditionalItem Decimal  @default(0) @map("cost_per_additional_item") @db.Decimal(14, 2)
-  maxWeightGrams        Int?     @map("max_weight_grams")
-  shippingZone          String?  @map("shipping_zone") // e.g., "SE", "EU", "WORLD"
-  isActive              Boolean  @default(true) @map("is_active")
-  createdAt             DateTime @default(now()) @map("created_at")
-  updatedAt             DateTime @updatedAt @map("updated_at")
-
-  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
-
-  @@index([storeId])
-  @@index([storeId, minItems])
-  @@map("shipping_cost_tiers")
-}
-
 enum SyncStatus {
   SUCCESS
   PARTIAL
   FAILED
   IN_PROGRESS
-}
-
-// ===========================================
-// PRODUCTS & COGS
-// ===========================================
-
-model Product {
-  id                String   @id @default(cuid())
-  storeId           String   @map("store_id")
-  shopifyProductId  BigInt   @map("shopify_product_id")
-  title             String
-  handle            String?
-  vendor            String?
-  productType       String?  @map("product_type")
-  status            String   @default("active")
-  imageUrl          String?  @map("image_url")
-  isShippingExempt  Boolean  @default(false) @map("is_shipping_exempt") // Digital products, e-books - no shipping cost
-  isHiddenFromStock Boolean  @default(false) @map("is_hidden_from_stock") // Hide bundles from inventory display
-  createdAt         DateTime @default(now()) @map("created_at")
-  updatedAt         DateTime @updatedAt @map("updated_at")
-
-  store    Store            @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  variants ProductVariant[]
-
-  @@unique([storeId, shopifyProductId])
-  @@index([storeId])
-  @@map("products")
-}
-
-model ProductVariant {
-  id                String   @id @default(cuid())
-  productId         String   @map("product_id")
-  shopifyVariantId  BigInt   @map("shopify_variant_id")
-  title             String?
-  sku               String?
-  barcode           String?
-  price             Decimal  @db.Decimal(14, 2)
-  compareAtPrice    Decimal? @map("compare_at_price") @db.Decimal(14, 2)
-  inventoryQuantity Int      @default(0) @map("inventory_quantity")
-  inventoryItemId   BigInt?  @map("inventory_item_id")
-  weight            Decimal? @db.Decimal(10, 2)
-  weightUnit        String?  @map("weight_unit")
-  imageUrl          String?  @map("image_url")
-  vatRate           Decimal  @default(25) @map("vat_rate") @db.Decimal(5, 2) // VAT rate in percentage (25%, 12%, 6%, 0%)
-  createdAt         DateTime @default(now()) @map("created_at")
-  updatedAt         DateTime @updatedAt @map("updated_at")
-
-  product        Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
-  cogsEntries    VariantCOGS[]
-  orderLineItems OrderLineItem[]
-
-  @@unique([productId, shopifyVariantId])
-  @@index([productId])
-  @@index([sku])
-  @@map("product_variants")
-}
-
-model VariantCOGS {
-  id            String     @id @default(cuid())
-  variantId     String     @map("variant_id")
-  costPrice     Decimal    @map("cost_price") @db.Decimal(14, 2)
-  zoneId        String?    @map("zone_id")
-  effectiveFrom DateTime   @default(now()) @map("effective_from")
-  effectiveTo   DateTime?  @map("effective_to")
-  source        COGSSource @default(MANUAL)
-  notes         String?
-  createdAt     DateTime   @default(now()) @map("created_at")
-  updatedAt     DateTime   @updatedAt @map("updated_at")
-
-  variant ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
-  zone    COGSZone?      @relation(fields: [zoneId], references: [id])
-
-  @@index([variantId])
-  @@index([variantId, effectiveFrom])
-  @@map("variant_cogs")
-}
-
-model COGSZone {
-  id        String   @id @default(cuid())
-  teamId    String   @map("team_id")
-  name      String
-  countries String[]
-  isDefault Boolean  @default(false) @map("is_default")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  team        Team          @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  cogsEntries VariantCOGS[]
-
-  @@unique([teamId, name])
-  @@map("cogs_zones")
 }
 
 enum COGSSource {
@@ -319,258 +699,10 @@ enum COGSSource {
   API
 }
 
-// ===========================================
-// ORDERS & TRANSACTIONS
-// ===========================================
-
-model Order {
-  id                  String   @id @default(cuid())
-  storeId             String   @map("store_id")
-  shopifyOrderId      BigInt   @map("shopify_order_id")
-  orderNumber         String   @map("order_number")
-  orderName           String?  @map("order_name")
-  financialStatus     String?  @map("financial_status")
-  fulfillmentStatus   String?  @map("fulfillment_status")
-  currency            String   @default("SEK")
-  presentmentCurrency String?  @map("presentment_currency")
-
-  // Revenue
-  subtotalPrice      Decimal @map("subtotal_price") @db.Decimal(14, 2)
-  totalDiscounts     Decimal @default(0) @map("total_discounts") @db.Decimal(14, 2)
-  totalShippingPrice Decimal @default(0) @map("total_shipping_price") @db.Decimal(14, 2)
-  totalTax           Decimal @default(0) @map("total_tax") @db.Decimal(14, 2)
-  totalPrice         Decimal @map("total_price") @db.Decimal(14, 2)
-
-  // Costs (calculated)
-  totalCOGS         Decimal @default(0) @map("total_cogs") @db.Decimal(14, 2)
-  totalShippingCost Decimal @default(0) @map("total_shipping_cost") @db.Decimal(14, 2)
-  totalPaymentFees  Decimal @default(0) @map("total_payment_fees") @db.Decimal(14, 2)
-  totalRefundAmount Decimal @default(0) @map("total_refund_amount") @db.Decimal(14, 2)
-
-  // Profit
-  grossProfit  Decimal @default(0) @map("gross_profit") @db.Decimal(14, 2)
-  netProfit    Decimal @default(0) @map("net_profit") @db.Decimal(14, 2)
-  profitMargin Decimal @default(0) @map("profit_margin") @db.Decimal(6, 4)
-
-  // Customer
-  customerEmail     String? @map("customer_email")
-  customerFirstName String? @map("customer_first_name")
-  customerLastName  String? @map("customer_last_name")
-  shippingCountry   String? @map("shipping_country")
-  shippingCity      String? @map("shipping_city")
-
-  // Dates
-  shopifyCreatedAt DateTime  @map("shopify_created_at")
-  shopifyUpdatedAt DateTime  @map("shopify_updated_at")
-  processedAt      DateTime? @map("processed_at")
-  cancelledAt      DateTime? @map("cancelled_at")
-
-  // Metadata
-  tags          String[]
-  note          String?
-  sourceUrl     String?  @map("source_url")
-  landingSite   String?  @map("landing_site")
-  referringSite String?  @map("referring_site")
-
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  store        Store              @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  lineItems    OrderLineItem[]
-  transactions OrderTransaction[]
-  refunds      OrderRefund[]
-
-  @@unique([storeId, shopifyOrderId])
-  @@index([storeId])
-  @@index([shopifyCreatedAt])
-  @@index([storeId, shopifyCreatedAt])
-  @@index([storeId, processedAt])
-  @@index([financialStatus])
-  @@index([storeId, financialStatus])
-  @@index([storeId, processedAt, financialStatus])
-  @@map("orders")
-}
-
-model OrderLineItem {
-  id                String  @id @default(cuid())
-  orderId           String  @map("order_id")
-  variantId         String? @map("variant_id")
-  shopifyLineItemId BigInt  @map("shopify_line_item_id")
-  shopifyProductId  BigInt? @map("shopify_product_id")
-  shopifyVariantId  BigInt? @map("shopify_variant_id")
-
-  title         String
-  variantTitle  String?    @map("variant_title")
-  sku           String?
-  quantity      Int
-  price         Decimal    @db.Decimal(14, 2)
-  totalDiscount Decimal    @default(0) @map("total_discount") @db.Decimal(14, 2)
-  taxAmount     Decimal    @default(0) @map("tax_amount") @db.Decimal(14, 2)
-
-  // COGS for this line item
-  unitCOGS   Decimal    @default(0) @map("unit_cogs") @db.Decimal(14, 2)
-  totalCOGS  Decimal    @default(0) @map("total_cogs") @db.Decimal(14, 2)
-  cogsSource COGSSource @default(MANUAL) @map("cogs_source")
-
-  createdAt DateTime @default(now()) @map("created_at")
-
-  order       Order                 @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  variant     ProductVariant?       @relation(fields: [variantId], references: [id], onDelete: SetNull)
-  refundItems OrderRefundLineItem[]
-
-  @@unique([orderId, shopifyLineItemId])
-  @@index([orderId])
-  @@index([variantId])
-  @@map("order_line_items")
-}
-
-model OrderTransaction {
-  id                   String   @id @default(cuid())
-  orderId              String   @map("order_id")
-  shopifyTransactionId BigInt   @map("shopify_transaction_id")
-  kind                 String
-  gateway              String
-  status               String
-  amount               Decimal  @db.Decimal(14, 2)
-  currency             String
-
-  // Fees
-  paymentFee           Decimal  @default(0) @map("payment_fee") @db.Decimal(14, 2)
-  paymentFeeCalculated Boolean  @default(false) @map("payment_fee_calculated")
-
-  processedAt DateTime? @map("processed_at")
-  createdAt   DateTime  @default(now()) @map("created_at")
-
-  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
-
-  @@unique([orderId, shopifyTransactionId])
-  @@index([orderId])
-  @@map("order_transactions")
-}
-
-model OrderRefund {
-  id              String   @id @default(cuid())
-  orderId         String   @map("order_id")
-  shopifyRefundId BigInt   @map("shopify_refund_id")
-  note            String?
-  amount          Decimal  @db.Decimal(14, 2)
-  restock         Boolean  @default(false)
-
-  // COGS tracking for proper reversal
-  totalCOGSReversed Decimal @default(0) @map("total_cogs_reversed") @db.Decimal(14, 2)
-
-  processedAt     DateTime @map("processed_at")
-  createdAt       DateTime @default(now()) @map("created_at")
-
-  order     Order                 @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  lineItems OrderRefundLineItem[]
-
-  @@unique([orderId, shopifyRefundId])
-  @@index([orderId])
-  @@index([processedAt])
-  @@map("order_refunds")
-}
-
-// ===========================================
-// PAYMENT FEE CONFIGURATION
-// ===========================================
-
-model PaymentFeeConfig {
-  id            String   @id @default(cuid())
-  storeId       String   @map("store_id")
-  gateway       String
-  feeType       FeeType  @map("fee_type")
-  percentageFee Decimal  @default(0) @map("percentage_fee") @db.Decimal(5, 4)
-  fixedFee      Decimal  @default(0) @map("fixed_fee") @db.Decimal(10, 2)
-  currency      String   @default("SEK")
-  isActive      Boolean  @default(true) @map("is_active")
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
-
-  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
-
-  @@unique([storeId, gateway])
-  @@map("payment_fee_configs")
-}
-
 enum FeeType {
   PERCENTAGE_ONLY
   FIXED_ONLY
   PERCENTAGE_PLUS_FIXED
-}
-
-// ===========================================
-// CUSTOM COSTS / EXPENSES
-// ===========================================
-
-model CostCategory {
-  id        String   @id @default(cuid())
-  teamId    String   @map("team_id")
-  name      String
-  slug      String
-  icon      String?
-  color     String?
-  isSystem  Boolean  @default(false) @map("is_system")
-  sortOrder Int      @default(0) @map("sort_order")
-  createdAt DateTime @default(now()) @map("created_at")
-
-  team  Team         @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  costs CustomCost[]
-
-  @@unique([teamId, slug])
-  @@map("cost_categories")
-}
-
-model CustomCost {
-  id          String   @id @default(cuid())
-  teamId      String   @map("team_id")
-  storeId     String?  @map("store_id")
-  categoryId  String?  @map("category_id")
-  name        String
-  description String?
-  costType    CostType @map("cost_type")
-
-  // For FIXED costs
-  amount   Decimal? @db.Decimal(14, 2)
-  currency String   @default("SEK")
-
-  // For VARIABLE costs (percentage of revenue)
-  percentageRate Decimal? @map("percentage_rate") @db.Decimal(5, 4)
-
-  // For RECURRING costs
-  recurrenceType  RecurrenceType? @map("recurrence_type")
-  recurrenceStart DateTime?       @map("recurrence_start")
-  recurrenceEnd   DateTime?       @map("recurrence_end")
-
-  // For ONE_TIME costs
-  occurrenceDate DateTime? @map("occurrence_date")
-
-  isActive  Boolean  @default(true) @map("is_active")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  team     Team              @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  category CostCategory?     @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  entries  CustomCostEntry[]
-
-  @@index([teamId])
-  @@index([storeId])
-  @@map("custom_costs")
-}
-
-model CustomCostEntry {
-  id        String   @id @default(cuid())
-  costId    String   @map("cost_id")
-  amount    Decimal  @db.Decimal(14, 2)
-  date      DateTime
-  notes     String?
-  createdAt DateTime @default(now()) @map("created_at")
-
-  cost CustomCost @relation(fields: [costId], references: [id], onDelete: Cascade)
-
-  @@index([costId])
-  @@index([date])
-  @@map("custom_cost_entries")
 }
 
 enum CostType {
@@ -587,160 +719,6 @@ enum RecurrenceType {
   MONTHLY
   QUARTERLY
   YEARLY
-}
-
-// ===========================================
-// BANK / FINANCE
-// ===========================================
-
-model BankAccount {
-  id             String   @id @default(cuid())
-  teamId         String   @map("team_id")
-  name           String
-  bankName       String?  @map("bank_name")
-  accountNumber  String?  @map("account_number")
-  currency       String   @default("SEK")
-  currentBalance Decimal  @default(0) @map("current_balance") @db.Decimal(14, 2)
-  isActive       Boolean  @default(true) @map("is_active")
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
-
-  team         Team              @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  transactions BankTransaction[]
-  imports      BankImport[]
-
-  @@unique([teamId, name])
-  @@index([teamId])
-  @@map("bank_accounts")
-}
-
-model BankTransaction {
-  id              String   @id @default(cuid())
-  accountId       String   @map("account_id")
-  importId        String?  @map("import_id")
-  transactionDate DateTime @map("transaction_date")
-  description     String
-  amount          Decimal  @db.Decimal(14, 2)
-  balance         Decimal  @db.Decimal(14, 2)
-  rawText         String?  @map("raw_text")
-
-  // Categorization
-  merchantId         String? @map("merchant_id")
-  categoryId         String? @map("category_id")
-  normalizedMerchant String? @map("normalized_merchant")
-
-  // Flags
-  isIncome       Boolean @default(false) @map("is_income")
-  isRecurring    Boolean @default(false) @map("is_recurring")
-  isSubscription Boolean @default(false) @map("is_subscription")
-
-  // VAT
-  hasVat    Boolean  @default(false) @map("has_vat")
-  vatAmount Decimal? @map("vat_amount") @db.Decimal(14, 2)
-  netAmount Decimal? @map("net_amount") @db.Decimal(14, 2)
-
-  // User overrides
-  userLabel String?  @map("user_label")
-  userNotes String?  @map("user_notes")
-  isHidden  Boolean  @default(false) @map("is_hidden")
-
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  account  BankAccount              @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  merchant BankMerchant?            @relation(fields: [merchantId], references: [id])
-  category BankTransactionCategory? @relation(fields: [categoryId], references: [id])
-  import   BankImport?              @relation(fields: [importId], references: [id])
-
-  @@unique([accountId, transactionDate, amount, description])
-  @@index([accountId])
-  @@index([transactionDate])
-  @@index([categoryId])
-  @@map("bank_transactions")
-}
-
-model BankTransactionCategory {
-  id              String           @id @default(cuid())
-  teamId          String?          @map("team_id")
-  name            String
-  slug            String
-  icon            String?
-  color           String?
-  type            BankCategoryType @default(EXPENSE)
-  hasVat          Boolean          @default(false) @map("has_vat")
-  vatRate         Decimal?         @map("vat_rate") @db.Decimal(5, 2)
-  isVatDeductible Boolean          @default(true) @map("is_vat_deductible")
-  isSystem        Boolean          @default(false) @map("is_system")
-  sortOrder       Int              @default(0) @map("sort_order")
-  createdAt       DateTime         @default(now()) @map("created_at")
-
-  transactions BankTransaction[]
-  merchants    BankMerchant[]     @relation("DefaultCategory")
-  rules        BankMerchantRule[] @relation("CategoryRules")
-
-  @@unique([teamId, slug])
-  @@map("bank_transaction_categories")
-}
-
-model BankMerchant {
-  id                String   @id @default(cuid())
-  teamId            String?  @map("team_id")
-  normalizedName    String   @map("normalized_name")
-  displayName       String   @map("display_name")
-  defaultCategoryId String?  @map("default_category_id")
-  isSubscription    Boolean  @default(false) @map("is_subscription")
-  logoUrl           String?  @map("logo_url")
-  createdAt         DateTime @default(now()) @map("created_at")
-
-  defaultCategory BankTransactionCategory? @relation("DefaultCategory", fields: [defaultCategoryId], references: [id])
-  transactions    BankTransaction[]
-  rules           BankMerchantRule[]       @relation("MerchantRules")
-
-  @@unique([teamId, normalizedName])
-  @@map("bank_merchants")
-}
-
-model BankMerchantRule {
-  id             String      @id @default(cuid())
-  teamId         String      @map("team_id")
-  pattern        String
-  patternType    PatternType @default(CONTAINS) @map("pattern_type")
-  merchantId     String?     @map("merchant_id")
-  categoryId     String?     @map("category_id")
-  merchantName   String?     @map("merchant_name")
-  isSubscription Boolean     @default(false) @map("is_subscription")
-  hasVat         Boolean     @default(false) @map("has_vat")
-  priority       Int         @default(0)
-  isActive       Boolean     @default(true) @map("is_active")
-  createdAt      DateTime    @default(now()) @map("created_at")
-
-  merchant BankMerchant?            @relation("MerchantRules", fields: [merchantId], references: [id])
-  category BankTransactionCategory? @relation("CategoryRules", fields: [categoryId], references: [id])
-
-  @@index([teamId, priority])
-  @@map("bank_merchant_rules")
-}
-
-model BankImport {
-  id             String       @id @default(cuid())
-  accountId      String       @map("account_id")
-  fileName       String       @map("file_name")
-  fileSize       Int?         @map("file_size")
-  status         ImportStatus @default(PENDING)
-  totalRows      Int          @default(0) @map("total_rows")
-  importedRows   Int          @default(0) @map("imported_rows")
-  skippedRows    Int          @default(0) @map("skipped_rows")
-  errorMessage   String?      @map("error_message")
-  dateRangeStart DateTime?    @map("date_range_start")
-  dateRangeEnd   DateTime?    @map("date_range_end")
-  importedAt     DateTime?    @map("imported_at")
-  createdAt      DateTime     @default(now()) @map("created_at")
-
-  account      BankAccount       @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  transactions BankTransaction[]
-
-  @@index([accountId])
-  @@map("bank_imports")
 }
 
 enum BankCategoryType {
@@ -763,175 +741,10 @@ enum ImportStatus {
   FAILED
 }
 
-// ===========================================
-// AD SPEND TRACKING
-// ===========================================
-
-model AdAccount {
-  id                    String      @id @default(cuid())
-  teamId                String      @map("team_id")
-  platform              AdPlatform
-  platformAccountId     String      @map("platform_account_id")
-  accountName           String?     @map("account_name")
-  accessTokenEncrypted  String?     @map("access_token_encrypted")
-  refreshTokenEncrypted String?     @map("refresh_token_encrypted")
-  tokenExpiresAt        DateTime?   @map("token_expires_at")
-  currency              String      @default("USD")
-  isActive              Boolean     @default(true) @map("is_active")
-  lastSyncAt            DateTime?   @map("last_sync_at")
-  lastSyncStatus        SyncStatus? @map("last_sync_status")
-  syncError             String?     @map("sync_error")
-  createdAt             DateTime    @default(now()) @map("created_at")
-  updatedAt             DateTime    @updatedAt @map("updated_at")
-
-  team   Team      @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  spends AdSpend[]
-
-  @@unique([teamId, platform, platformAccountId])
-  @@index([teamId])
-  @@map("ad_accounts")
-}
-
-model AdSpend {
-  id           String   @id @default(cuid())
-  adAccountId  String   @map("ad_account_id")
-  date         DateTime
-  spend        Decimal  @db.Decimal(14, 2)
-  impressions  Int      @default(0)
-  clicks       Int      @default(0)
-  conversions  Int      @default(0)
-  revenue      Decimal  @default(0) @db.Decimal(14, 2)
-  roas         Decimal  @default(0) @db.Decimal(8, 4)
-  cpc          Decimal  @default(0) @db.Decimal(10, 2)
-  cpm          Decimal  @default(0) @db.Decimal(10, 2)
-  currency     String   @default("USD")
-  campaignId   String?  @map("campaign_id")
-  campaignName String?  @map("campaign_name")
-  adSetId      String?  @map("adset_id")
-  adSetName    String?  @map("adset_name")
-  createdAt    DateTime @default(now()) @map("created_at")
-
-  adAccount AdAccount @relation(fields: [adAccountId], references: [id], onDelete: Cascade)
-
-  @@unique([adAccountId, date, campaignId, adSetId])
-  @@index([adAccountId])
-  @@index([date])
-  @@map("ad_spends")
-}
-
 enum AdPlatform {
   FACEBOOK
   GOOGLE
   TIKTOK
   SNAPCHAT
   PINTEREST
-}
-
-// ===========================================
-// INVENTORY SNAPSHOTS
-// ===========================================
-
-model InventorySnapshot {
-  id               String   @id @default(cuid())
-  storeId          String   @map("store_id")
-  snapshotDate     DateTime @map("snapshot_date")
-  totalProducts    Int      @default(0) @map("total_products")
-  totalVariants    Int      @default(0) @map("total_variants")
-  totalUnits       Int      @default(0) @map("total_units")
-  totalRetailValue Decimal  @default(0) @map("total_retail_value") @db.Decimal(14, 2)
-  totalCOGSValue   Decimal  @default(0) @map("total_cogs_value") @db.Decimal(14, 2)
-  lowStockCount    Int      @default(0) @map("low_stock_count")
-  outOfStockCount  Int      @default(0) @map("out_of_stock_count")
-  inventoryData    Json?    @map("inventory_data")
-  byProductType    Json?    @map("by_product_type")
-  createdAt        DateTime @default(now()) @map("created_at")
-
-  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
-
-  @@unique([storeId, snapshotDate])
-  @@index([storeId])
-  @@index([snapshotDate])
-  @@map("inventory_snapshots")
-}
-
-// ===========================================
-// AUDIT LOG
-// ===========================================
-
-model AuditLog {
-  id           String   @id @default(cuid())
-  teamId       String   @map("team_id")
-  userId       String?  @map("user_id")
-  action       String
-  resourceType String   @map("resource_type")
-  resourceId   String?  @map("resource_id")
-  changes      Json?
-  metadata     Json?
-  ipAddress    String?  @map("ip_address")
-  userAgent    String?  @map("user_agent")
-  createdAt    DateTime @default(now()) @map("created_at")
-
-  user User? @relation(fields: [userId], references: [id])
-
-  @@index([teamId, createdAt])
-  @@index([resourceType, resourceId])
-  @@map("audit_logs")
-}
-
-// ===========================================
-// WEBHOOK LOGGING (Idempotency)
-// ===========================================
-
-model WebhookLog {
-  id          String   @id @default(cuid())
-  webhookId   String   @unique @map("webhook_id") // Idempotency key
-  topic       String   // e.g., "orders/create", "refunds/create"
-  storeId     String   @map("store_id")
-  shopifyId   BigInt?  @map("shopify_id") // shopify_order_id or shopify_refund_id
-  status      WebhookStatus @default(PROCESSED)
-  errorMessage String? @map("error_message")
-  payload     Json?    // Store webhook payload for debugging
-  processedAt DateTime @default(now()) @map("processed_at")
-  createdAt   DateTime @default(now()) @map("created_at")
-
-  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
-
-  @@index([storeId])
-  @@index([topic])
-  @@index([storeId, topic])
-  @@index([processedAt])
-  @@map("webhook_logs")
-}
-
-enum WebhookStatus {
-  PROCESSED
-  FAILED
-  SKIPPED
-  DUPLICATE
-}
-
-// ===========================================
-// REFUND LINE ITEMS (For COGS reversal)
-// ===========================================
-
-model OrderRefundLineItem {
-  id              String   @id @default(cuid())
-  refundId        String   @map("refund_id")
-  lineItemId      String?  @map("line_item_id")
-  shopifyLineItemId BigInt @map("shopify_line_item_id")
-  quantity        Int
-  restockType     String?  @map("restock_type") // "no_restock", "cancel", "return"
-
-  // COGS reversal tracking
-  unitCOGS        Decimal  @default(0) @map("unit_cogs") @db.Decimal(14, 2)
-  totalCOGS       Decimal  @default(0) @map("total_cogs") @db.Decimal(14, 2)
-
-  createdAt       DateTime @default(now()) @map("created_at")
-
-  refund    OrderRefund    @relation(fields: [refundId], references: [id], onDelete: Cascade)
-  lineItem  OrderLineItem? @relation(fields: [lineItemId], references: [id], onDelete: SetNull)
-
-  @@index([refundId])
-  @@index([lineItemId])
-  @@map("order_refund_line_items")
 }
