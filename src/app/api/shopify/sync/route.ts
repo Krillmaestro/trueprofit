@@ -67,14 +67,17 @@ export async function POST(request: NextRequest) {
   // Determine the date to sync from:
   // 1. If sinceDate is provided, use it (for historical sync)
   // 2. If incremental and lastSyncAt exists, use lastSyncAt
-  // 3. Otherwise start from January 1st, 2026
+  // 3. Otherwise start from 30 days ago (to get recent orders)
   let sinceDateForOrders: Date
   if (sinceDate) {
     sinceDateForOrders = new Date(sinceDate)
   } else if (incremental && store.lastSyncAt) {
     sinceDateForOrders = store.lastSyncAt
   } else {
-    sinceDateForOrders = new Date('2026-01-01T00:00:00Z')
+    // Default to 30 days ago for initial sync
+    const thirtyDaysAgo = new Date()
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+    sinceDateForOrders = thirtyDaysAgo
   }
 
   // Background sync: start the job and return immediately

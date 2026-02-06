@@ -171,14 +171,19 @@ async function syncShopifyStore(
       accessToken,
     })
 
-    // Only sync recent orders (last 24 hours for quick refresh)
-    const yesterday = new Date()
-    yesterday.setDate(yesterday.getDate() - 1)
-    const sinceDate = lastSyncAt && lastSyncAt > yesterday ? lastSyncAt : yesterday
+    // Sync orders from last 30 days if no lastSyncAt, otherwise from lastSyncAt
+    // This ensures we always get recent orders even if sync was missed
+    const thirtyDaysAgo = new Date()
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
 
-    // Quick sync - only orders
+    // Use the earlier of lastSyncAt or 30 days ago to ensure we don't miss orders
+    const sinceDate = lastSyncAt
+      ? (lastSyncAt < thirtyDaysAgo ? thirtyDaysAgo : lastSyncAt)
+      : thirtyDaysAgo
+
+    // Sync orders - get up to 250 orders per request
     const response = await client.getOrders({
-      limit: 50,
+      limit: 250,
       created_at_min: sinceDate.toISOString(),
       status: 'any',
     })
@@ -525,60 +530,66 @@ async function syncGoogleAdsFromSheets(
     const data = await client.getAdSpendData(dateFrom, dateTo)
     let count = 0
 
-    // Use transaction for atomicity
-    await prisma.$transaction(async (tx) => {
-      for (const row of data) {
-        // Normalize date to midnight UTC for consistent storage
-        const date = normalizeDate(row.date)
-        const roas = row.cost > 0 ? row.conversionValue / row.cost : 0
-        const cpc = row.clicks > 0 ? row.cost / row.clicks : 0
-        const cpm = row.impressions > 0 ? (row.cost / row.impressions) * 1000 : 0
-        const campaignId = row.campaignId || null
+    // Process in batches to avoid transaction timeout
+    const BATCH_SIZE = 50
+    for (let i = 0; i < data.length; i += BATCH_SIZE) {
+      const batch = data.slice(i, i + BATCH_SIZE)
 
-        // Use proper upsert with unique constraint
-        // Google Sheets doesn't have ad sets, so adSetId is always empty string
-        await tx.adSpend.upsert({
-          where: {
-            adAccountId_date_campaignId_adSetId: {
+      // Use transaction with extended timeout for each batch
+      await prisma.$transaction(async (tx) => {
+        for (const row of batch) {
+          // Normalize date to midnight UTC for consistent storage
+          const date = normalizeDate(row.date)
+          const roas = row.cost > 0 ? row.conversionValue / row.cost : 0
+          const cpc = row.clicks > 0 ? row.cost / row.clicks : 0
+          const cpm = row.impressions > 0 ? (row.cost / row.impressions) * 1000 : 0
+          const campaignId = row.campaignId || null
+
+          // Use proper upsert with unique constraint
+          // Google Sheets doesn't have ad sets, so adSetId is always empty string
+          await tx.adSpend.upsert({
+            where: {
+              adAccountId_date_campaignId_adSetId: {
+                adAccountId: account.id,
+                date,
+                campaignId: campaignId ?? '',
+                adSetId: '',
+              },
+            },
+            create: {
               adAccountId: account.id,
               date,
-              campaignId: campaignId ?? '',
-              adSetId: '',
+              spend: row.cost,
+              impressions: row.impressions,
+              clicks: row.clicks,
+              conversions: Math.round(row.conversions),
+              revenue: row.conversionValue,
+              roas,
+              cpc,
+              cpm,
+              currency: row.currency || account.currency,
+              campaignId,
+              campaignName: row.campaignName || null,
+              adSetId: null,
+              adSetName: null,
             },
-          },
-          create: {
-            adAccountId: account.id,
-            date,
-            spend: row.cost,
-            impressions: row.impressions,
-            clicks: row.clicks,
-            conversions: Math.round(row.conversions),
-            revenue: row.conversionValue,
-            roas,
-            cpc,
-            cpm,
-            currency: row.currency || account.currency,
-            campaignId,
-            campaignName: row.campaignName || null,
-            adSetId: null,
-            adSetName: null,
-          },
-          update: {
-            spend: row.cost,
-            impressions: row.impressions,
-            clicks: row.clicks,
-            conversions: Math.round(row.conversions),
-            revenue: row.conversionValue,
-            roas,
-            cpc,
-            cpm,
-            campaignName: row.campaignName || null,
-          },
-        })
+            update: {
+              spend: row.cost,
+              impressions: row.impressions,
+              clicks: row.clicks,
+              conversions: Math.round(row.conversions),
+              revenue: row.conversionValue,
+              roas,
+              cpc,
+              cpm,
+              campaignName: row.campaignName || null,
+            },
+          })
 
-        count++
-      }
-    })
+          count++
+        }
+      }, { timeout: 30000 }) // 30 second timeout per batch
+    }
 
     // Update last sync time
     await prisma.adAccount.update({
@@ -594,18 +605,35 @@ async function syncGoogleAdsFromSheets(
   } catch (error) {
     console.error('Google Ads (Sheets) sync error:', error)
 
+    // Create a more descriptive error message
+    let errorMessage = 'Unknown error'
+    if (error instanceof Error) {
+      errorMessage = error.message
+
+      // Check for common issues
+      if (error.message.includes('401') || error.message.includes('Unauthorized')) {
+        errorMessage = 'Din Google-inloggning har gått ut. Koppla om Google Sheets.'
+      } else if (error.message.includes('403') || error.message.includes('Forbidden')) {
+        errorMessage = 'Ingen åtkomst till Google Sheet. Kontrollera att du har delat sheetet.'
+      } else if (error.message.includes('404') || error.message.includes('not found')) {
+        errorMessage = 'Kunde inte hitta Google Sheet. Kontrollera URL:en.'
+      } else if (error.message.includes('refresh token')) {
+        errorMessage = 'Behöver logga in igen. Koppla om Google Sheets.'
+      }
+    }
+
     await prisma.adAccount.update({
       where: { id: account.id },
       data: {
         lastSyncStatus: 'FAILED',
-        syncError: error instanceof Error ? error.message : 'Unknown error',
+        syncError: errorMessage,
       },
     })
 
     return {
       success: false,
       count: 0,
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: errorMessage,
     }
   }
 }
