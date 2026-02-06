@@ -100,7 +100,7 @@ export async function DELETE() {
 
 /**
  * GET /api/ads/cleanup
- * Shows current state before cleanup
+ * Shows current state before cleanup with detailed duplicate analysis
  */
 export async function GET() {
   const session = await getServerSession(authOptions)
@@ -129,14 +129,14 @@ export async function GET() {
       orderBy: { createdAt: 'asc' },
     })
 
-    // Count duplicates
+    // Count duplicates by account
     const platformCounts = new Map<string, number>()
     for (const account of accounts) {
       const key = `${account.platform}:${account.platformAccountId}`
       platformCounts.set(key, (platformCounts.get(key) || 0) + 1)
     }
 
-    const duplicates = [...platformCounts.entries()].filter(([, count]) => count > 1)
+    const duplicateAccounts = [...platformCounts.entries()].filter(([, count]) => count > 1)
 
     // Get total ad spend
     const totalSpend = await prisma.adSpend.aggregate({
@@ -151,6 +151,51 @@ export async function GET() {
       _count: true
     })
 
+    // Check for duplicate ad spend entries (same date, same account)
+    // This happens when NULL campaignId/adSetId creates duplicates
+    const spendByDateAccount = await prisma.$queryRaw<Array<{
+      ad_account_id: string;
+      date: Date;
+      campaign_id: string | null;
+      adset_id: string | null;
+      count: bigint;
+      total_spend: number;
+    }>>`
+      SELECT
+        ad_account_id,
+        date,
+        campaign_id,
+        adset_id,
+        COUNT(*) as count,
+        SUM(spend::numeric) as total_spend
+      FROM ad_spends
+      WHERE ad_account_id IN (
+        SELECT id FROM ad_accounts WHERE team_id = ${teamMember.teamId}
+      )
+      GROUP BY ad_account_id, date, campaign_id, adset_id
+      HAVING COUNT(*) > 1
+      ORDER BY count DESC
+      LIMIT 20
+    `
+
+    // Get spend by date to see if values are reasonable
+    const spendByDate = await prisma.adSpend.groupBy({
+      by: ['date'],
+      where: {
+        adAccount: {
+          teamId: teamMember.teamId
+        }
+      },
+      _sum: {
+        spend: true
+      },
+      _count: true,
+      orderBy: {
+        date: 'desc'
+      },
+      take: 14 // Last 2 weeks
+    })
+
     return NextResponse.json({
       accounts: accounts.map(a => ({
         id: a.id,
@@ -161,10 +206,27 @@ export async function GET() {
         lastSyncAt: a.lastSyncAt,
         createdAt: a.createdAt,
       })),
-      duplicates: duplicates.map(([key, count]) => ({ key, count })),
+      duplicateAccounts: duplicateAccounts.map(([key, count]) => ({ key, count })),
+      duplicateSpendEntries: spendByDateAccount.map(d => ({
+        adAccountId: d.ad_account_id,
+        date: d.date,
+        campaignId: d.campaign_id,
+        adSetId: d.adset_id,
+        count: Number(d.count),
+        totalSpend: Number(d.total_spend),
+      })),
+      spendByDate: spendByDate.map(d => ({
+        date: d.date,
+        totalSpend: Number(d._sum.spend || 0),
+        recordCount: d._count,
+      })),
       totalSpendRecords: totalSpend._count,
       totalSpendAmount: totalSpend._sum.spend ? Number(totalSpend._sum.spend) : 0,
-      hasDuplicates: duplicates.length > 0,
+      hasDuplicateAccounts: duplicateAccounts.length > 0,
+      hasDuplicateSpends: spendByDateAccount.length > 0,
+      recommendation: spendByDateAccount.length > 0
+        ? 'Du har duplicerade ad spend-poster. Anropa DELETE /api/ads/cleanup för att rensa och synka sedan om.'
+        : 'Ingen duplicering hittad.',
     })
   } catch (error) {
     console.error('Status check error:', error)

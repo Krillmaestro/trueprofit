@@ -190,11 +190,15 @@ async function computePnLReport(
   const defaultFeeConfig = { percentageFee: 2.9, fixedFee: 3 }
 
   // Get orders with all related data
+  // IMPORTANT: Include 'refunded' and null financialStatus to match Shopify's revenue calculation
   const orders = await prisma.order.findMany({
     where: {
       storeId: { in: storeIds },
       processedAt: dateFilter,
-      financialStatus: { in: ['paid', 'partially_paid', 'partially_refunded'] },
+      OR: [
+        { financialStatus: { in: ['paid', 'partially_paid', 'partially_refunded', 'refunded'] } },
+        { financialStatus: null },
+      ],
       cancelledAt: null,
     },
     include: {

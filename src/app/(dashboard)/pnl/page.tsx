@@ -261,8 +261,8 @@ export default function PnLPage() {
       {/* Page Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800">P&L Report</h1>
-          <p className="text-slate-600">Profit & Loss statement</p>
+          <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">P&L Report</h1>
+          <p className="text-slate-600 dark:text-slate-400">Profit & Loss statement</p>
         </div>
         <div className="flex gap-2">
           <Select value={periodType} onValueChange={setPeriodType}>
@@ -288,11 +288,11 @@ export default function PnLPage() {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-slate-600">Net Revenue</p>
-                <p className="text-2xl font-bold text-slate-800">
+                <p className="text-sm text-slate-600 dark:text-slate-400">Net Revenue</p>
+                <p className="text-2xl font-bold text-slate-800 dark:text-slate-100">
                   {formatCurrency(pnlData.revenue.netRevenue)}
                 </p>
-                <p className="text-xs text-slate-500">{pnlData.orderCount} orders</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">{pnlData.orderCount} orders</p>
               </div>
               <DollarSign className="h-8 w-8 text-blue-500 opacity-50" />
             </div>
@@ -303,11 +303,11 @@ export default function PnLPage() {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-slate-600">Gross Profit</p>
-                <p className="text-2xl font-bold text-slate-800">
+                <p className="text-sm text-slate-600 dark:text-slate-400">Gross Profit</p>
+                <p className="text-2xl font-bold text-slate-800 dark:text-slate-100">
                   {formatCurrency(pnlData.grossProfit)}
                 </p>
-                <p className="text-sm text-green-600">{pnlData.grossMargin}% margin</p>
+                <p className="text-sm text-green-600 dark:text-green-400">{pnlData.grossMargin}% margin</p>
               </div>
               <TrendingUp className="h-8 w-8 text-green-500 opacity-50" />
             </div>
@@ -318,11 +318,11 @@ export default function PnLPage() {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-slate-600">Operating Profit</p>
-                <p className="text-2xl font-bold text-slate-800">
+                <p className="text-sm text-slate-600 dark:text-slate-400">Operating Profit</p>
+                <p className="text-2xl font-bold text-slate-800 dark:text-slate-100">
                   {formatCurrency(pnlData.operatingProfit)}
                 </p>
-                <p className="text-sm text-green-600">{pnlData.operatingMargin}% margin</p>
+                <p className="text-sm text-green-600 dark:text-green-400">{pnlData.operatingMargin}% margin</p>
               </div>
               <TrendingUp className="h-8 w-8 text-amber-500 opacity-50" />
             </div>
@@ -333,11 +333,11 @@ export default function PnLPage() {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-slate-600">Net Profit</p>
-                <p className={`text-2xl font-bold ${pnlData.netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                <p className="text-sm text-slate-600 dark:text-slate-400">Net Profit</p>
+                <p className={`text-2xl font-bold ${pnlData.netProfit >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                   {formatCurrency(pnlData.netProfit)}
                 </p>
-                <p className={`text-sm ${pnlData.netMargin >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                <p className={`text-sm ${pnlData.netMargin >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                   {pnlData.netMargin}% margin
                 </p>
               </div>
@@ -415,17 +415,17 @@ export default function PnLPage() {
             </div>
 
             {/* Gross Profit */}
-            <div className="flex justify-between py-3 bg-green-50 px-4 rounded-lg">
-              <span className="font-bold text-green-800">Gross Profit</span>
+            <div className="flex justify-between py-3 bg-green-50 dark:bg-green-900/30 px-4 rounded-lg">
+              <span className="font-bold text-green-800 dark:text-green-300">Gross Profit</span>
               <div className="text-right">
-                <span className="font-bold text-green-600">{formatCurrency(pnlData.grossProfit)}</span>
-                <span className="text-sm text-green-600 ml-2">({pnlData.grossMargin}%)</span>
+                <span className="font-bold text-green-600 dark:text-green-400">{formatCurrency(pnlData.grossProfit)}</span>
+                <span className="text-sm text-green-600 dark:text-green-400 ml-2">({pnlData.grossMargin}%)</span>
               </div>
             </div>
 
             {/* Operating Expenses */}
             <div>
-              <h3 className="text-lg font-semibold text-slate-800 mb-3 flex items-center">
+              <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-200 mb-3 flex items-center">
                 <TrendingDown className="w-5 h-5 mr-2 text-amber-500" />
                 Operating Expenses
               </h3>
@@ -433,17 +433,17 @@ export default function PnLPage() {
               {/* Marketing */}
               {pnlData.operatingExpenses.marketing.total > 0 && (
                 <div className="mb-4">
-                  <p className="text-sm font-medium text-slate-700 mb-2 pl-7">Marketing & Advertising</p>
+                  <p className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 pl-7">Marketing & Advertising</p>
                   <div className="space-y-2 pl-7">
                     {Object.entries(pnlData.operatingExpenses.marketing.byPlatform).map(([platform, amount]) => (
                       <div key={platform} className="flex justify-between py-1 text-sm">
-                        <span className="text-slate-500 capitalize">{platform} Ads</span>
-                        <span className="text-red-600">-{formatCurrency(amount)}</span>
+                        <span className="text-slate-500 dark:text-slate-400 capitalize">{platform} Ads</span>
+                        <span className="text-red-600 dark:text-red-400">-{formatCurrency(amount)}</span>
                       </div>
                     ))}
-                    <div className="flex justify-between py-1 border-t border-slate-200 font-medium">
-                      <span className="text-slate-600">Total Marketing</span>
-                      <span className="text-red-600">-{formatCurrency(pnlData.operatingExpenses.marketing.total)}</span>
+                    <div className="flex justify-between py-1 border-t border-slate-200 dark:border-slate-700 font-medium">
+                      <span className="text-slate-600 dark:text-slate-300">Total Marketing</span>
+                      <span className="text-red-600 dark:text-red-400">-{formatCurrency(pnlData.operatingExpenses.marketing.total)}</span>
                     </div>
                   </div>
                 </div>
@@ -452,17 +452,17 @@ export default function PnLPage() {
               {/* Payment Fees */}
               {pnlData.operatingExpenses.paymentFees.total > 0 && (
                 <div className="mb-4">
-                  <p className="text-sm font-medium text-slate-700 mb-2 pl-7">Payment Processing Fees</p>
+                  <p className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 pl-7">Payment Processing Fees</p>
                   <div className="space-y-2 pl-7">
                     {Object.entries(pnlData.operatingExpenses.paymentFees.byGateway).map(([gateway, amount]) => (
                       <div key={gateway} className="flex justify-between py-1 text-sm">
-                        <span className="text-slate-500">{gateway}</span>
-                        <span className="text-red-600">-{formatCurrency(amount)}</span>
+                        <span className="text-slate-500 dark:text-slate-400">{gateway}</span>
+                        <span className="text-red-600 dark:text-red-400">-{formatCurrency(amount)}</span>
                       </div>
                     ))}
-                    <div className="flex justify-between py-1 border-t border-slate-200 font-medium">
-                      <span className="text-slate-600">Total Payment Fees</span>
-                      <span className="text-red-600">-{formatCurrency(pnlData.operatingExpenses.paymentFees.total)}</span>
+                    <div className="flex justify-between py-1 border-t border-slate-200 dark:border-slate-700 font-medium">
+                      <span className="text-slate-600 dark:text-slate-300">Total Payment Fees</span>
+                      <span className="text-red-600 dark:text-red-400">-{formatCurrency(pnlData.operatingExpenses.paymentFees.total)}</span>
                     </div>
                   </div>
                 </div>
@@ -471,23 +471,23 @@ export default function PnLPage() {
               {/* Fixed Costs */}
               {pnlData.operatingExpenses.fixed.total > 0 && (
                 <div className="mb-4">
-                  <p className="text-sm font-medium text-slate-700 mb-2 pl-7">Fixed Costs</p>
+                  <p className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 pl-7">Fixed Costs</p>
                   <div className="space-y-2 pl-7">
                     {Object.entries(pnlData.operatingExpenses.fixed.byName).map(([name, amount]) => (
                       <div key={name} className="flex justify-between py-1 text-sm">
-                        <span className="text-slate-500">{name}</span>
-                        <span className="text-red-600">-{formatCurrency(amount)}</span>
+                        <span className="text-slate-500 dark:text-slate-400">{name}</span>
+                        <span className="text-red-600 dark:text-red-400">-{formatCurrency(amount)}</span>
                       </div>
                     ))}
                     {pnlData.operatingExpenses.fixed.salaries > 0 && (
                       <div className="flex justify-between py-1 text-sm">
-                        <span className="text-slate-500">Salaries</span>
-                        <span className="text-red-600">-{formatCurrency(pnlData.operatingExpenses.fixed.salaries)}</span>
+                        <span className="text-slate-500 dark:text-slate-400">Salaries</span>
+                        <span className="text-red-600 dark:text-red-400">-{formatCurrency(pnlData.operatingExpenses.fixed.salaries)}</span>
                       </div>
                     )}
-                    <div className="flex justify-between py-1 border-t border-slate-200 font-medium">
-                      <span className="text-slate-600">Total Fixed Costs</span>
-                      <span className="text-red-600">-{formatCurrency(pnlData.operatingExpenses.fixed.total)}</span>
+                    <div className="flex justify-between py-1 border-t border-slate-200 dark:border-slate-700 font-medium">
+                      <span className="text-slate-600 dark:text-slate-300">Total Fixed Costs</span>
+                      <span className="text-red-600 dark:text-red-400">-{formatCurrency(pnlData.operatingExpenses.fixed.total)}</span>
                     </div>
                   </div>
                 </div>
@@ -496,17 +496,17 @@ export default function PnLPage() {
               {/* Variable Costs */}
               {pnlData.operatingExpenses.variable.total > 0 && (
                 <div className="mb-4">
-                  <p className="text-sm font-medium text-slate-700 mb-2 pl-7">Variable Costs</p>
+                  <p className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 pl-7">Variable Costs</p>
                   <div className="space-y-2 pl-7">
                     {Object.entries(pnlData.operatingExpenses.variable.byName).map(([name, amount]) => (
                       <div key={name} className="flex justify-between py-1 text-sm">
-                        <span className="text-slate-500">{name}</span>
-                        <span className="text-red-600">-{formatCurrency(amount)}</span>
+                        <span className="text-slate-500 dark:text-slate-400">{name}</span>
+                        <span className="text-red-600 dark:text-red-400">-{formatCurrency(amount)}</span>
                       </div>
                     ))}
-                    <div className="flex justify-between py-1 border-t border-slate-200 font-medium">
-                      <span className="text-slate-600">Total Variable Costs</span>
-                      <span className="text-red-600">-{formatCurrency(pnlData.operatingExpenses.variable.total)}</span>
+                    <div className="flex justify-between py-1 border-t border-slate-200 dark:border-slate-700 font-medium">
+                      <span className="text-slate-600 dark:text-slate-300">Total Variable Costs</span>
+                      <span className="text-red-600 dark:text-red-400">-{formatCurrency(pnlData.operatingExpenses.variable.total)}</span>
                     </div>
                   </div>
                 </div>
@@ -516,27 +516,27 @@ export default function PnLPage() {
               {pnlData.operatingExpenses.oneTime > 0 && (
                 <div className="mb-4 pl-7">
                   <div className="flex justify-between py-1 font-medium">
-                    <span className="text-slate-600">One-time Costs</span>
-                    <span className="text-red-600">-{formatCurrency(pnlData.operatingExpenses.oneTime)}</span>
+                    <span className="text-slate-600 dark:text-slate-300">One-time Costs</span>
+                    <span className="text-red-600 dark:text-red-400">-{formatCurrency(pnlData.operatingExpenses.oneTime)}</span>
                   </div>
                 </div>
               )}
 
               {/* Total OpEx */}
-              <div className="flex justify-between py-2 bg-amber-50 px-3 rounded-lg font-semibold ml-7">
-                <span>Total Operating Expenses</span>
-                <span className="text-red-600">-{formatCurrency(pnlData.operatingExpenses.totalOpex)}</span>
+              <div className="flex justify-between py-2 bg-amber-50 dark:bg-amber-900/30 px-3 rounded-lg font-semibold ml-7">
+                <span className="dark:text-slate-200">Total Operating Expenses</span>
+                <span className="text-red-600 dark:text-red-400">-{formatCurrency(pnlData.operatingExpenses.totalOpex)}</span>
               </div>
             </div>
 
             {/* Operating Profit */}
-            <div className="flex justify-between py-3 bg-blue-50 px-4 rounded-lg">
-              <span className="font-bold text-blue-800">Operating Profit (EBIT)</span>
+            <div className="flex justify-between py-3 bg-blue-50 dark:bg-blue-900/30 px-4 rounded-lg">
+              <span className="font-bold text-blue-800 dark:text-blue-300">Operating Profit (EBIT)</span>
               <div className="text-right">
-                <span className={`font-bold ${pnlData.operatingProfit >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
+                <span className={`font-bold ${pnlData.operatingProfit >= 0 ? 'text-blue-600 dark:text-blue-400' : 'text-red-600 dark:text-red-400'}`}>
                   {formatCurrency(pnlData.operatingProfit)}
                 </span>
-                <span className={`text-sm ml-2 ${pnlData.operatingMargin >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
+                <span className={`text-sm ml-2 ${pnlData.operatingMargin >= 0 ? 'text-blue-600 dark:text-blue-400' : 'text-red-600 dark:text-red-400'}`}>
                   ({pnlData.operatingMargin}%)
                 </span>
               </div>
@@ -545,25 +545,25 @@ export default function PnLPage() {
             {/* Net Profit - MATCHES DASHBOARD */}
             <div className={`flex justify-between py-4 px-4 rounded-lg border-2 ${
               pnlData.netProfit >= 0
-                ? 'bg-green-100 border-green-200'
-                : 'bg-red-100 border-red-200'
+                ? 'bg-green-100 dark:bg-green-900/40 border-green-200 dark:border-green-700'
+                : 'bg-red-100 dark:bg-red-900/40 border-red-200 dark:border-red-700'
             }`}>
-              <span className={`font-bold text-lg ${pnlData.netProfit >= 0 ? 'text-green-800' : 'text-red-800'}`}>
+              <span className={`font-bold text-lg ${pnlData.netProfit >= 0 ? 'text-green-800 dark:text-green-300' : 'text-red-800 dark:text-red-300'}`}>
                 Nettovinst
               </span>
               <div className="text-right">
-                <span className={`font-bold text-lg ${pnlData.netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                <span className={`font-bold text-lg ${pnlData.netProfit >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                   {formatCurrency(pnlData.netProfit)}
                 </span>
-                <span className={`text-sm ml-2 ${pnlData.netMargin >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                <span className={`text-sm ml-2 ${pnlData.netMargin >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                   ({pnlData.netMargin}%)
                 </span>
               </div>
             </div>
 
             {/* Info about the profit figure */}
-            <div className="mt-4 p-4 bg-emerald-50 border border-emerald-200 rounded-lg">
-              <p className="text-sm text-emerald-800">
+            <div className="mt-4 p-4 bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-700 rounded-lg">
+              <p className="text-sm text-emerald-800 dark:text-emerald-300">
                 <strong>💡 Tips:</strong> Nettovinsten är beloppet du kan disponera via lön, utdelning eller återinvestering.
                 Målet är ofta att optimera uttag så att bolagsvinsten blir minimal.
               </p>
@@ -576,27 +576,27 @@ export default function PnLPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Order Metrics</CardTitle>
+            <CardTitle className="text-lg dark:text-slate-100">Order Metrics</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
               <div className="flex justify-between">
-                <span className="text-slate-600">Total Orders</span>
-                <span className="font-medium">{pnlData.orderCount}</span>
+                <span className="text-slate-600 dark:text-slate-400">Total Orders</span>
+                <span className="font-medium dark:text-slate-200">{pnlData.orderCount}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-600">Average Order Value</span>
-                <span className="font-medium">{formatCurrency(pnlData.avgOrderValue)}</span>
+                <span className="text-slate-600 dark:text-slate-400">Average Order Value</span>
+                <span className="font-medium dark:text-slate-200">{formatCurrency(pnlData.avgOrderValue)}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-600">Revenue per Order</span>
-                <span className="font-medium">
+                <span className="text-slate-600 dark:text-slate-400">Revenue per Order</span>
+                <span className="font-medium dark:text-slate-200">
                   {formatCurrency(pnlData.orderCount > 0 ? pnlData.revenue.netRevenue / pnlData.orderCount : 0)}
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-600">Profit per Order</span>
-                <span className={`font-medium ${pnlData.netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                <span className="text-slate-600 dark:text-slate-400">Profit per Order</span>
+                <span className={`font-medium ${pnlData.netProfit >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                   {formatCurrency(pnlData.orderCount > 0 ? pnlData.netProfit / pnlData.orderCount : 0)}
                 </span>
               </div>
@@ -606,37 +606,37 @@ export default function PnLPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Cost Structure</CardTitle>
+            <CardTitle className="text-lg dark:text-slate-100">Cost Structure</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
               <div className="flex justify-between">
-                <span className="text-slate-600">COGS % of Revenue</span>
-                <span className="font-medium">
+                <span className="text-slate-600 dark:text-slate-400">COGS % of Revenue</span>
+                <span className="font-medium dark:text-slate-200">
                   {pnlData.revenue.netRevenue > 0
                     ? ((pnlData.cogs.totalCOGS / pnlData.revenue.netRevenue) * 100).toFixed(1)
                     : 0}%
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-600">Marketing % of Revenue</span>
-                <span className="font-medium">
+                <span className="text-slate-600 dark:text-slate-400">Marketing % of Revenue</span>
+                <span className="font-medium dark:text-slate-200">
                   {pnlData.revenue.netRevenue > 0
                     ? ((pnlData.operatingExpenses.marketing.total / pnlData.revenue.netRevenue) * 100).toFixed(1)
                     : 0}%
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-600">Payment Fees % of Revenue</span>
-                <span className="font-medium">
+                <span className="text-slate-600 dark:text-slate-400">Payment Fees % of Revenue</span>
+                <span className="font-medium dark:text-slate-200">
                   {pnlData.revenue.netRevenue > 0
                     ? ((pnlData.operatingExpenses.paymentFees.total / pnlData.revenue.netRevenue) * 100).toFixed(1)
                     : 0}%
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-600">Total OpEx % of Revenue</span>
-                <span className="font-medium">
+                <span className="text-slate-600 dark:text-slate-400">Total OpEx % of Revenue</span>
+                <span className="font-medium dark:text-slate-200">
                   {pnlData.revenue.netRevenue > 0
                     ? ((pnlData.operatingExpenses.totalOpex / pnlData.revenue.netRevenue) * 100).toFixed(1)
                     : 0}%
