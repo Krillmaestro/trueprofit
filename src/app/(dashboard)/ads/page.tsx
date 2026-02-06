@@ -253,6 +253,8 @@ function AdsPageContent() {
       const today = new Date().toISOString().split('T')[0]
 
       let syncedTotal = 0
+      const errors: string[] = []
+
       for (const account of adAccounts) {
         try {
           const syncRes = await fetch('/api/ads/sync', {
@@ -264,19 +266,28 @@ function AdsPageContent() {
               dateTo: today,
             }),
           })
+          const data = await syncRes.json()
           if (syncRes.ok) {
-            const data = await syncRes.json()
             syncedTotal += data.syncedCount || 0
+          } else {
+            errors.push(`${account.accountName || account.platform}: ${data.error || data.details || 'Okänt fel'}`)
           }
         } catch (err) {
-          console.error(`Failed to sync ${account.accountName}:`, err)
+          errors.push(`${account.accountName || account.platform}: ${err instanceof Error ? err.message : 'Nätverksfel'}`)
         }
       }
 
-      setNotification({
-        type: 'success',
-        message: `Klart! Synkade ${syncedTotal} poster från alla konton.`
-      })
+      if (errors.length > 0) {
+        setNotification({
+          type: 'error',
+          message: `Synkfel: ${errors.join(', ')}`
+        })
+      } else {
+        setNotification({
+          type: 'success',
+          message: `Klart! Synkade ${syncedTotal} poster från alla konton.`
+        })
+      }
       fetchData()
     } catch (error) {
       setNotification({
@@ -315,16 +326,8 @@ function AdsPageContent() {
     return acc
   }, {} as Record<string, number>)
 
-  // Use demo data if no real data
-  const displaySpends = adSpends.length > 0 ? adSpends : [
-    { id: '1', platform: 'FACEBOOK', campaignName: 'Demo Campaign', campaignId: '1', spend: 12500, impressions: 245000, clicks: 4890, conversions: 156, revenue: 45600, roas: 3.65, cpc: 2.56, cpm: 51.02, currency: 'SEK', date: new Date().toISOString() },
-    { id: '2', platform: 'GOOGLE', campaignName: 'Brand Keywords', campaignId: '2', spend: 5400, impressions: 32000, clicks: 1850, conversions: 124, revenue: 38900, roas: 7.20, cpc: 2.92, cpm: 168.75, currency: 'SEK', date: new Date().toISOString() },
-  ]
-
-  const displayTotalSpend = adSpends.length > 0 ? totalSpend : 48400
-  const displayTotalRevenue = adSpends.length > 0 ? totalRevenue : 208200
-  const displayTotalConversions = adSpends.length > 0 ? totalConversions : 690
-  const displayOverallRoas = adSpends.length > 0 ? overallRoas : 4.30
+  // NO demo data - show real values only (0 if no data)
+  const hasRealData = adSpends.length > 0
 
   return (
     <div className="space-y-6">
@@ -458,7 +461,7 @@ function AdsPageContent() {
               <div>
                 <p className="text-sm text-slate-600 dark:text-slate-400">Total Ad Spend</p>
                 <p className="text-2xl font-bold text-slate-800 dark:text-slate-100">
-                  {displayTotalSpend.toLocaleString('sv-SE')} kr
+                  {hasRealData ? `${totalSpend.toLocaleString('sv-SE')} kr` : '-'}
                 </p>
               </div>
               <DollarSign className="h-8 w-8 text-red-500 opacity-50" />
@@ -472,7 +475,7 @@ function AdsPageContent() {
               <div>
                 <p className="text-sm text-slate-600 dark:text-slate-400">Ad Revenue</p>
                 <p className="text-2xl font-bold text-green-600 dark:text-green-400">
-                  {displayTotalRevenue.toLocaleString('sv-SE')} kr
+                  {hasRealData ? `${totalRevenue.toLocaleString('sv-SE')} kr` : '-'}
                 </p>
               </div>
               <TrendingUp className="h-8 w-8 text-green-500 opacity-50" />
@@ -485,7 +488,9 @@ function AdsPageContent() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-slate-600 dark:text-slate-400">Overall ROAS</p>
-                <p className="text-2xl font-bold text-slate-800 dark:text-slate-100">{displayOverallRoas.toFixed(2)}x</p>
+                <p className="text-2xl font-bold text-slate-800 dark:text-slate-100">
+                  {hasRealData ? `${overallRoas.toFixed(2)}x` : '-'}
+                </p>
               </div>
               <Target className="h-8 w-8 text-purple-500 opacity-50" />
             </div>
@@ -497,7 +502,9 @@ function AdsPageContent() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-slate-600 dark:text-slate-400">Conversions</p>
-                <p className="text-2xl font-bold text-slate-800 dark:text-slate-100">{displayTotalConversions}</p>
+                <p className="text-2xl font-bold text-slate-800 dark:text-slate-100">
+                  {hasRealData ? totalConversions : '-'}
+                </p>
               </div>
               <BarChart3 className="h-8 w-8 text-blue-500 opacity-50" />
             </div>
@@ -620,10 +627,17 @@ function AdsPageContent() {
         <CardHeader>
           <CardTitle>Campaign Performance</CardTitle>
           <CardDescription>
-            {adSpends.length > 0 ? 'Performance metrics by campaign' : 'Demo data - connect an account to see real data'}
+            {hasRealData ? 'Performance metrics by campaign' : 'Ingen data - synka ett ad-konto för att se resultat'}
           </CardDescription>
         </CardHeader>
         <CardContent>
+          {!hasRealData ? (
+            <div className="text-center py-8 text-slate-500 dark:text-slate-400">
+              <BarChart3 className="h-12 w-12 mx-auto mb-4 opacity-50" />
+              <p>Ingen kampanjdata tillgänglig</p>
+              <p className="text-sm mt-1">Anslut ett ad-konto och synka för att se kampanjprestanda</p>
+            </div>
+          ) : (
           <Table>
             <TableHeader>
               <TableRow>
@@ -638,7 +652,7 @@ function AdsPageContent() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {displaySpends.map((campaign) => {
+              {adSpends.map((campaign) => {
                 const config = platformConfig[campaign.platform as keyof typeof platformConfig] || platformConfig.FACEBOOK
                 const Icon = config.icon
 
@@ -676,6 +690,7 @@ function AdsPageContent() {
               })}
             </TableBody>
           </Table>
+          )}
         </CardContent>
       </Card>
 
