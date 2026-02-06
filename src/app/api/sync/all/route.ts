@@ -337,6 +337,14 @@ async function syncShopifyStore(
   }
 }
 
+/**
+ * Normalize date to midnight UTC for consistent storage
+ */
+function normalizeDate(dateStr: string): Date {
+  const [year, month, day] = dateStr.split('-').map(Number)
+  return new Date(Date.UTC(year, month - 1, day, 0, 0, 0))
+}
+
 async function syncFacebookAdsAccount(
   account: {
     id: string
@@ -366,44 +374,35 @@ async function syncFacebookAdsAccount(
 
     let count = 0
 
-    for (const insight of insights) {
-      const spend = parseFloat(insight.spend || '0')
-      const impressions = parseInt(insight.impressions || '0', 10)
-      const clicks = parseInt(insight.clicks || '0', 10)
-      const conversions = extractConversions(insight.actions)
-      const roas = extractRoas(insight.purchase_roas)
+    // Use transaction for atomicity
+    await prisma.$transaction(async (tx) => {
+      for (const insight of insights) {
+        const spend = parseFloat(insight.spend || '0')
+        const impressions = parseInt(insight.impressions || '0', 10)
+        const clicks = parseInt(insight.clicks || '0', 10)
+        const conversions = extractConversions(insight.actions)
+        const roas = extractRoas(insight.purchase_roas)
 
-      const cpc = clicks > 0 ? spend / clicks : 0
-      const cpm = impressions > 0 ? (spend / impressions) * 1000 : 0
-      const revenue = roas * spend
+        const cpc = clicks > 0 ? spend / clicks : 0
+        const cpm = impressions > 0 ? (spend / impressions) * 1000 : 0
+        const revenue = roas * spend
 
-      const date = new Date(insight.date_start)
-      const campaignId = insight.campaign_id || null
-      const adSetId = insight.adset_id || null
+        // Normalize date to midnight UTC
+        const date = normalizeDate(insight.date_start)
+        const campaignId = insight.campaign_id || null
+        const adSetId = insight.adset_id || null
 
-      const existing = await prisma.adSpend.findFirst({
-        where: { adAccountId: account.id, date, campaignId, adSetId },
-      })
-
-      if (existing) {
-        await prisma.adSpend.update({
-          where: { id: existing.id },
-          data: {
-            spend,
-            impressions,
-            clicks,
-            conversions,
-            revenue,
-            roas,
-            cpc,
-            cpm,
-            campaignName: insight.campaign_name || null,
-            adSetName: insight.adset_name || null,
+        // Use proper upsert with unique constraint
+        await tx.adSpend.upsert({
+          where: {
+            adAccountId_date_campaignId_adSetId: {
+              adAccountId: account.id,
+              date,
+              campaignId: campaignId ?? '',
+              adSetId: adSetId ?? '',
+            },
           },
-        })
-      } else {
-        await prisma.adSpend.create({
-          data: {
+          create: {
             adAccountId: account.id,
             date,
             spend,
@@ -420,11 +419,23 @@ async function syncFacebookAdsAccount(
             adSetId,
             adSetName: insight.adset_name || null,
           },
+          update: {
+            spend,
+            impressions,
+            clicks,
+            conversions,
+            revenue,
+            roas,
+            cpc,
+            cpm,
+            campaignName: insight.campaign_name || null,
+            adSetName: insight.adset_name || null,
+          },
         })
-      }
 
-      count++
-    }
+        count++
+      }
+    })
 
     // Update last sync time
     await prisma.adAccount.update({
@@ -514,38 +525,28 @@ async function syncGoogleAdsFromSheets(
     const data = await client.getAdSpendData(dateFrom, dateTo)
     let count = 0
 
-    for (const row of data) {
-      const date = new Date(row.date)
-      const roas = row.cost > 0 ? row.conversionValue / row.cost : 0
-      const cpc = row.clicks > 0 ? row.cost / row.clicks : 0
-      const cpm = row.impressions > 0 ? (row.cost / row.impressions) * 1000 : 0
+    // Use transaction for atomicity
+    await prisma.$transaction(async (tx) => {
+      for (const row of data) {
+        // Normalize date to midnight UTC for consistent storage
+        const date = normalizeDate(row.date)
+        const roas = row.cost > 0 ? row.conversionValue / row.cost : 0
+        const cpc = row.clicks > 0 ? row.cost / row.clicks : 0
+        const cpm = row.impressions > 0 ? (row.cost / row.impressions) * 1000 : 0
+        const campaignId = row.campaignId || null
 
-      const existing = await prisma.adSpend.findFirst({
-        where: {
-          adAccountId: account.id,
-          date,
-          campaignId: row.campaignId,
-        },
-      })
-
-      if (existing) {
-        await prisma.adSpend.update({
-          where: { id: existing.id },
-          data: {
-            spend: row.cost,
-            impressions: row.impressions,
-            clicks: row.clicks,
-            conversions: Math.round(row.conversions),
-            revenue: row.conversionValue,
-            roas,
-            cpc,
-            cpm,
-            campaignName: row.campaignName,
+        // Use proper upsert with unique constraint
+        // Google Sheets doesn't have ad sets, so adSetId is always empty string
+        await tx.adSpend.upsert({
+          where: {
+            adAccountId_date_campaignId_adSetId: {
+              adAccountId: account.id,
+              date,
+              campaignId: campaignId ?? '',
+              adSetId: '',
+            },
           },
-        })
-      } else {
-        await prisma.adSpend.create({
-          data: {
+          create: {
             adAccountId: account.id,
             date,
             spend: row.cost,
@@ -557,14 +558,27 @@ async function syncGoogleAdsFromSheets(
             cpc,
             cpm,
             currency: row.currency || account.currency,
-            campaignId: row.campaignId,
-            campaignName: row.campaignName,
+            campaignId,
+            campaignName: row.campaignName || null,
+            adSetId: null,
+            adSetName: null,
+          },
+          update: {
+            spend: row.cost,
+            impressions: row.impressions,
+            clicks: row.clicks,
+            conversions: Math.round(row.conversions),
+            revenue: row.conversionValue,
+            roas,
+            cpc,
+            cpm,
+            campaignName: row.campaignName || null,
           },
         })
-      }
 
-      count++
-    }
+        count++
+      }
+    })
 
     // Update last sync time
     await prisma.adAccount.update({

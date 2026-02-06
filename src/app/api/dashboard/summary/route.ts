@@ -149,11 +149,16 @@ async function computeDashboardSummary(
   const defaultFeeConfig = { percentageFee: 2.9, fixedFee: 3 }
 
   // Get orders with all related data
+  // IMPORTANT: Include 'refunded' to match Shopify's revenue calculation
+  // Also handle null financial_status (some orders may not have this set)
   const orders = await prisma.order.findMany({
     where: {
       storeId: { in: storeIds },
       processedAt: dateFilter,
-      financialStatus: { in: ['paid', 'partially_paid', 'partially_refunded'] },
+      OR: [
+        { financialStatus: { in: ['paid', 'partially_paid', 'partially_refunded', 'refunded'] } },
+        { financialStatus: null },  // Include orders with null status
+      ],
       cancelledAt: null,
     },
     include: {
@@ -416,7 +421,11 @@ async function computeDashboardSummary(
     where: {
       storeId: { in: storeIds },
       processedAt: dateFilter,
-      financialStatus: { in: ['paid', 'partially_paid', 'partially_refunded'] },
+      // Match the same filter as main orders query
+      OR: [
+        { financialStatus: { in: ['paid', 'partially_paid', 'partially_refunded', 'refunded'] } },
+        { financialStatus: null },
+      ],
       cancelledAt: null,
     },
     _sum: {

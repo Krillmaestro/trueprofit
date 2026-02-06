@@ -395,12 +395,27 @@ async function syncShopifyHistorical(
     }
 
     do {
-      const response = await client.getOrders({
+      // Format date as YYYY-MM-DD for Shopify API (more reliable than ISO)
+      // Only pass created_at_min on first page - page_info handles subsequent pages
+      const params: {
+        limit: number
+        page_info?: string
+        created_at_min?: string
+        status: string
+      } = {
         limit: 250,
-        page_info: pageInfo,
-        created_at_min: sinceDate.toISOString(),
         status: 'any',
-      })
+      }
+
+      if (pageInfo) {
+        // Shopify ignores all params except limit when page_info is present
+        params.page_info = pageInfo
+      } else {
+        // First page - use date filter
+        params.created_at_min = sinceDate.toISOString()
+      }
+
+      const response = await client.getOrders(params)
       const { orders } = response.data
 
       for (const orderData of orders) {

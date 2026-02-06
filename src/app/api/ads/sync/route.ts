@@ -3,7 +3,6 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { encrypt, decrypt } from '@/lib/encryption'
-import { syncRateLimiter, getRateLimitKey, getRateLimitHeaders } from '@/lib/rate-limit'
 import { FacebookAdsClient, extractConversions, extractRoas } from '@/services/ads/facebook'
 import { GoogleSheetsAdsClient, refreshGoogleSheetsToken } from '@/services/ads/google-sheets'
 
@@ -16,20 +15,6 @@ export async function POST(request: NextRequest) {
 
   if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
-  // Apply rate limiting based on user ID
-  const rateLimitKey = getRateLimitKey(request, session.user.id)
-  const rateLimitResult = syncRateLimiter(rateLimitKey)
-
-  if (rateLimitResult.limited) {
-    return NextResponse.json(
-      { error: 'Too many sync requests. Please wait before syncing again.' },
-      {
-        status: 429,
-        headers: getRateLimitHeaders(10, rateLimitResult.remaining, rateLimitResult.resetAt),
-      }
-    )
   }
 
   const { adAccountId, dateFrom, dateTo } = await request.json()
@@ -95,6 +80,15 @@ export async function POST(request: NextRequest) {
   }
 }
 
+/**
+ * Normalize date to midnight UTC for consistent storage
+ * This ensures the same date always produces the same timestamp
+ */
+function normalizeDate(dateStr: string): Date {
+  const [year, month, day] = dateStr.split('-').map(Number)
+  return new Date(Date.UTC(year, month - 1, day, 0, 0, 0))
+}
+
 async function syncFacebookAds(
   adAccount: { id: string; platformAccountId: string; accessTokenEncrypted: string | null; currency: string },
   dateFrom: string,
@@ -114,61 +108,37 @@ async function syncFacebookAds(
 
   let count = 0
 
-  for (const insight of insights) {
-    const spend = parseFloat(insight.spend || '0')
-    const impressions = parseInt(insight.impressions || '0', 10)
-    const clicks = parseInt(insight.clicks || '0', 10)
-    const conversions = extractConversions(insight.actions)
-    const roas = extractRoas(insight.purchase_roas)
+  // Use transaction to ensure atomicity
+  await prisma.$transaction(async (tx) => {
+    for (const insight of insights) {
+      const spend = parseFloat(insight.spend || '0')
+      const impressions = parseInt(insight.impressions || '0', 10)
+      const clicks = parseInt(insight.clicks || '0', 10)
+      const conversions = extractConversions(insight.actions)
+      const roas = extractRoas(insight.purchase_roas)
 
-    // Calculate metrics
-    const cpc = clicks > 0 ? spend / clicks : 0
-    const cpm = impressions > 0 ? (spend / impressions) * 1000 : 0
-    const revenue = roas * spend
+      // Calculate metrics
+      const cpc = clicks > 0 ? spend / clicks : 0
+      const cpm = impressions > 0 ? (spend / impressions) * 1000 : 0
+      const revenue = roas * spend
 
-    // Parse date as UTC to avoid timezone issues
-    const dateStr = insight.date_start // Format: "YYYY-MM-DD"
-    const [year, month, day] = dateStr.split('-').map(Number)
-    const date = new Date(Date.UTC(year, month - 1, day, 12, 0, 0)) // Use noon UTC
-    const campaignId = insight.campaign_id || null
-    const adSetId = insight.adset_id || null
+      // Normalize date to midnight UTC
+      const date = normalizeDate(insight.date_start)
+      const campaignId = insight.campaign_id || null
+      const adSetId = insight.adset_id || null
 
-    // Use date range for finding existing records
-    const dateStart = new Date(Date.UTC(year, month - 1, day, 0, 0, 0))
-    const dateEnd = new Date(Date.UTC(year, month - 1, day, 23, 59, 59))
-
-    // Find existing record using date range
-    const existing = await prisma.adSpend.findFirst({
-      where: {
-        adAccountId: adAccount.id,
-        date: {
-          gte: dateStart,
-          lte: dateEnd,
+      // Use proper upsert with the unique constraint
+      // Schema: @@unique([adAccountId, date, campaignId, adSetId])
+      await tx.adSpend.upsert({
+        where: {
+          adAccountId_date_campaignId_adSetId: {
+            adAccountId: adAccount.id,
+            date,
+            campaignId: campaignId ?? '',  // Prisma needs non-null for compound unique
+            adSetId: adSetId ?? '',
+          },
         },
-        campaignId,
-        adSetId,
-      },
-    })
-
-    if (existing) {
-      await prisma.adSpend.update({
-        where: { id: existing.id },
-        data: {
-          spend,
-          impressions,
-          clicks,
-          conversions,
-          revenue,
-          roas,
-          cpc,
-          cpm,
-          campaignName: insight.campaign_name || null,
-          adSetName: insight.adset_name || null,
-        },
-      })
-    } else {
-      await prisma.adSpend.create({
-        data: {
+        create: {
           adAccountId: adAccount.id,
           date,
           spend,
@@ -185,20 +155,29 @@ async function syncFacebookAds(
           adSetId,
           adSetName: insight.adset_name || null,
         },
+        update: {
+          spend,
+          impressions,
+          clicks,
+          conversions,
+          revenue,
+          roas,
+          cpc,
+          cpm,
+          campaignName: insight.campaign_name || null,
+          adSetName: insight.adset_name || null,
+        },
       })
-    }
 
-    count++
-  }
+      count++
+    }
+  })
 
   return count
 }
 
 /**
  * Sync Google Ads data via Google Sheets
- *
- * Google Ads konton som är kopplade via Sheets har platformAccountId som börjar med "sheets:"
- * eller är ett spreadsheet ID direkt.
  */
 async function syncGoogleAds(
   adAccount: {
@@ -214,7 +193,6 @@ async function syncGoogleAds(
   if (!adAccount.accessTokenEncrypted) return 0
 
   // Extract spreadsheet ID from platformAccountId
-  // Format: "sheets:SPREADSHEET_ID" or just the spreadsheet ID
   const spreadsheetId = adAccount.platformAccountId.startsWith('sheets:')
     ? adAccount.platformAccountId.substring(7)
     : adAccount.platformAccountId
@@ -228,7 +206,6 @@ async function syncGoogleAds(
   })
 
   if (account?.tokenExpiresAt && account.tokenExpiresAt < new Date()) {
-    // Token expired, refresh it
     if (!adAccount.refreshTokenEncrypted) {
       throw new Error('Token har gått ut och det finns ingen refresh token')
     }
@@ -242,7 +219,6 @@ async function syncGoogleAds(
 
     accessToken = newTokens.access_token
 
-    // Update stored token
     const tokenExpiresAt = new Date()
     tokenExpiresAt.setSeconds(tokenExpiresAt.getSeconds() + newTokens.expires_in)
 
@@ -255,7 +231,6 @@ async function syncGoogleAds(
     })
   }
 
-  // Use Google Sheets client to read ad data
   const client = new GoogleSheetsAdsClient({
     accessToken,
     spreadsheetId,
@@ -266,52 +241,29 @@ async function syncGoogleAds(
 
   console.log(`[Google Ads Sync] Got ${data.length} records from Google Sheets`)
 
-  for (const row of data) {
-    const roas = row.cost > 0 ? row.conversionValue / row.cost : 0
-    const cpc = row.clicks > 0 ? row.cost / row.clicks : 0
-    const cpm = row.impressions > 0 ? (row.cost / row.impressions) * 1000 : 0
+  // Use transaction to ensure atomicity
+  await prisma.$transaction(async (tx) => {
+    for (const row of data) {
+      const roas = row.cost > 0 ? row.conversionValue / row.cost : 0
+      const cpc = row.clicks > 0 ? row.cost / row.clicks : 0
+      const cpm = row.impressions > 0 ? (row.cost / row.impressions) * 1000 : 0
 
-    // Parse date as UTC to avoid timezone issues
-    // row.date is in format "YYYY-MM-DD"
-    const [year, month, day] = row.date.split('-').map(Number)
-    const date = new Date(Date.UTC(year, month - 1, day, 12, 0, 0)) // Use noon UTC to avoid boundary issues
-    const campaignId = row.campaignId || null
+      // Normalize date to midnight UTC
+      const date = normalizeDate(row.date)
+      const campaignId = row.campaignId || null
 
-    // Use date range for finding existing records to handle timezone edge cases
-    const dateStart = new Date(Date.UTC(year, month - 1, day, 0, 0, 0))
-    const dateEnd = new Date(Date.UTC(year, month - 1, day, 23, 59, 59))
-
-    // Find existing record using date range
-    const existing = await prisma.adSpend.findFirst({
-      where: {
-        adAccountId: adAccount.id,
-        date: {
-          gte: dateStart,
-          lte: dateEnd,
+      // Use proper upsert with the unique constraint
+      // For Google Sheets, adSetId is always null
+      await tx.adSpend.upsert({
+        where: {
+          adAccountId_date_campaignId_adSetId: {
+            adAccountId: adAccount.id,
+            date,
+            campaignId: campaignId ?? '',
+            adSetId: '',  // Google Sheets doesn't have ad sets
+          },
         },
-        campaignId,
-      },
-    })
-
-    if (existing) {
-      await prisma.adSpend.update({
-        where: { id: existing.id },
-        data: {
-          spend: row.cost,
-          impressions: row.impressions,
-          clicks: row.clicks,
-          conversions: Math.round(row.conversions),
-          revenue: row.conversionValue,
-          roas,
-          cpc,
-          cpm,
-          campaignName: row.campaignName || null,
-        },
-      })
-      console.log(`[Google Ads Sync] Updated record for ${row.date} - ${row.campaignName}: ${row.cost} kr`)
-    } else {
-      await prisma.adSpend.create({
-        data: {
+        create: {
           adAccountId: adAccount.id,
           date,
           spend: row.cost,
@@ -325,13 +277,25 @@ async function syncGoogleAds(
           currency: row.currency || adAccount.currency,
           campaignId,
           campaignName: row.campaignName || null,
+          adSetId: null,
+          adSetName: null,
+        },
+        update: {
+          spend: row.cost,
+          impressions: row.impressions,
+          clicks: row.clicks,
+          conversions: Math.round(row.conversions),
+          revenue: row.conversionValue,
+          roas,
+          cpc,
+          cpm,
+          campaignName: row.campaignName || null,
         },
       })
-      console.log(`[Google Ads Sync] Created record for ${row.date} - ${row.campaignName}: ${row.cost} kr`)
-    }
 
-    count++
-  }
+      count++
+    }
+  })
 
   console.log(`[Google Ads Sync] Synced ${count} records total`)
   return count
