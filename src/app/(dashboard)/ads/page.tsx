@@ -119,6 +119,7 @@ function AdsPageContent() {
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
   const [historicalSyncDialog, setHistoricalSyncDialog] = useState<AdAccount | null>(null)
   const [historicalSyncDate, setHistoricalSyncDate] = useState('2024-08-01')
+  const [cleaningUp, setCleaningUp] = useState(false)
 
   // Check for OAuth callback messages
   useEffect(() => {
@@ -225,6 +226,69 @@ function AdsPageContent() {
     setHistoricalSyncDialog(null)
   }
 
+  // Clean up duplicates and resync all accounts
+  const handleCleanupAndResync = async () => {
+    setCleaningUp(true)
+    try {
+      // Step 1: Delete all ad spend data
+      const cleanupRes = await fetch('/api/ads/cleanup', { method: 'DELETE' })
+      if (!cleanupRes.ok) {
+        const error = await cleanupRes.json()
+        throw new Error(error.details || 'Cleanup failed')
+      }
+
+      const cleanupData = await cleanupRes.json()
+      setNotification({
+        type: 'success',
+        message: `Rensade ${cleanupData.clearedAllSpends} poster. Synkar om...`
+      })
+
+      // Step 2: Wait a moment
+      await new Promise(resolve => setTimeout(resolve, 1000))
+
+      // Step 3: Resync all accounts from 3 months back
+      const threeMonthsAgo = new Date()
+      threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3)
+      const dateFrom = threeMonthsAgo.toISOString().split('T')[0]
+      const today = new Date().toISOString().split('T')[0]
+
+      let syncedTotal = 0
+      for (const account of adAccounts) {
+        try {
+          const syncRes = await fetch('/api/ads/sync', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              adAccountId: account.id,
+              dateFrom,
+              dateTo: today,
+            }),
+          })
+          if (syncRes.ok) {
+            const data = await syncRes.json()
+            syncedTotal += data.syncedCount || 0
+          }
+        } catch (err) {
+          console.error(`Failed to sync ${account.accountName}:`, err)
+        }
+      }
+
+      setNotification({
+        type: 'success',
+        message: `Klart! Synkade ${syncedTotal} poster från alla konton.`
+      })
+      fetchData()
+    } catch (error) {
+      setNotification({
+        type: 'error',
+        message: error instanceof Error ? error.message : 'Cleanup failed'
+      })
+    } finally {
+      setCleaningUp(false)
+      setTimeout(() => setNotification(null), 5000)
+    }
+  }
+
   const connectPlatform = (platform: 'facebook' | 'google' | 'google_sheets' | 'tiktok') => {
     setDialogOpen(false)
     if (platform === 'facebook') {
@@ -284,13 +348,29 @@ function AdsPageContent() {
           <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Ad Spend</h1>
           <p className="text-slate-600 dark:text-slate-400">Track advertising spend and ROAS across platforms</p>
         </div>
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="w-4 h-4 mr-2" />
-              Connect Ad Account
+        <div className="flex gap-2">
+          {adAccounts.length > 0 && (
+            <Button
+              variant="outline"
+              onClick={handleCleanupAndResync}
+              disabled={cleaningUp}
+              className="text-amber-600 border-amber-300 hover:bg-amber-50 dark:text-amber-400 dark:border-amber-600 dark:hover:bg-amber-900/30"
+            >
+              {cleaningUp ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <RefreshCw className="w-4 h-4 mr-2" />
+              )}
+              {cleaningUp ? 'Rensar...' : 'Rensa & Synka om'}
             </Button>
-          </DialogTrigger>
+          )}
+          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="w-4 h-4 mr-2" />
+                Connect Ad Account
+              </Button>
+            </DialogTrigger>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Connect Ad Account</DialogTitle>
@@ -367,6 +447,7 @@ function AdsPageContent() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       {/* Summary Cards */}
