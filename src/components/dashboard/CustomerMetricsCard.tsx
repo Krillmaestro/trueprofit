@@ -33,8 +33,13 @@ interface CustomerMetrics {
   ltvCacRatio: number
   adSpend: number
   breakEvenRoasNewCustomers?: number
+  breakEvenRoasLtv?: number           // LTV-based break-even ROAS
+  ltvMultiplier?: number              // LTV/AOV - how many times a customer buys
+  ltvAcquisitionBoost?: number        // % more you can spend due to LTV
   currentRoas?: number
   adRevenue?: number
+  maxCacForProfitability?: number     // Max CAC for 3:1 LTV:CAC
+  cacHealthy?: boolean
 }
 
 interface Insight {
@@ -265,48 +270,113 @@ export function CustomerMetricsCard({
         </div>
       </div>
 
-      {/* Break-Even ROAS for New Customers */}
-      {metrics.breakEvenRoasNewCustomers && metrics.currentRoas !== undefined && (
-        <div className="mb-4 p-3 bg-gradient-to-r from-indigo-50 to-violet-50 dark:from-indigo-900/40 dark:to-violet-900/40 rounded-xl border border-indigo-100 dark:border-indigo-800">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-medium text-indigo-700 dark:text-indigo-300">Break-Even ROAS (nya kunder)</span>
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger>
-                    <Info className="w-3 h-3 text-indigo-500 dark:text-indigo-400" />
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Minsta ROAS för att nya kunder ska vara lönsamma</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </div>
-            <div className={cn(
-              'px-2 py-0.5 rounded text-xs font-semibold',
-              metrics.currentRoas >= metrics.breakEvenRoasNewCustomers
-                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300'
-                : 'bg-rose-100 text-rose-700 dark:bg-rose-900/50 dark:text-rose-300'
-            )}>
-              {metrics.currentRoas >= metrics.breakEvenRoasNewCustomers ? 'Lönsam' : 'Ej lönsam'}
-            </div>
-          </div>
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-xs text-indigo-600 dark:text-indigo-400">Nuvarande ROAS</div>
+      {/* LTV-baserad Break-Even ROAS - THE REAL TRUTH */}
+      {metrics.breakEvenRoasLtv && metrics.breakEvenRoasNewCustomers && metrics.currentRoas !== undefined && (
+        <div className="mb-4 space-y-3">
+          {/* LTV-baserad ROAS - Main card */}
+          <div className="p-4 bg-gradient-to-r from-emerald-50 via-teal-50 to-cyan-50 dark:from-emerald-900/40 dark:via-teal-900/40 dark:to-cyan-900/40 rounded-xl border border-emerald-200 dark:border-emerald-700">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-semibold text-emerald-800 dark:text-emerald-200">
+                  🎯 Äkta Break-Even ROAS (LTV-baserad)
+                </span>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger>
+                      <Info className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs">
+                      <p className="font-medium mb-1">Varför denna siffra är viktigast:</p>
+                      <p className="text-xs">
+                        Traditionell ROAS räknar bara på första köpet. Men dina kunder köper i genomsnitt{' '}
+                        <strong>{metrics.ltvMultiplier?.toFixed(1)}x</strong> gånger!
+                        Det betyder att du kan betala <strong>{metrics.ltvAcquisitionBoost?.toFixed(0)}% mer</strong> för att skaffa nya kunder.
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
               <div className={cn(
-                'text-xl font-bold',
-                metrics.currentRoas >= metrics.breakEvenRoasNewCustomers
-                  ? 'text-emerald-600 dark:text-emerald-400'
-                  : 'text-rose-600 dark:text-rose-400'
+                'px-3 py-1 rounded-full text-sm font-bold',
+                metrics.currentRoas >= metrics.breakEvenRoasLtv
+                  ? 'bg-emerald-500 text-white dark:bg-emerald-600'
+                  : 'bg-rose-500 text-white dark:bg-rose-600'
               )}>
-                {metrics.currentRoas.toFixed(2)}x
+                {metrics.currentRoas >= metrics.breakEvenRoasLtv ? '✓ LÖNSAM' : '✗ EJ LÖNSAM'}
               </div>
             </div>
-            <div className="text-right">
-              <div className="text-xs text-indigo-600 dark:text-indigo-400">BE ROAS</div>
-              <div className="text-xl font-bold text-indigo-700 dark:text-indigo-300">
-                {metrics.breakEvenRoasNewCustomers.toFixed(2)}x
+
+            <div className="grid grid-cols-3 gap-4 text-center">
+              <div>
+                <div className="text-xs text-emerald-600 dark:text-emerald-400 mb-1">Din ROAS</div>
+                <div className={cn(
+                  'text-2xl font-bold',
+                  metrics.currentRoas >= metrics.breakEvenRoasLtv
+                    ? 'text-emerald-600 dark:text-emerald-400'
+                    : 'text-rose-600 dark:text-rose-400'
+                )}>
+                  {metrics.currentRoas.toFixed(2)}x
+                </div>
+              </div>
+              <div>
+                <div className="text-xs text-emerald-600 dark:text-emerald-400 mb-1">LTV BE ROAS</div>
+                <div className="text-2xl font-bold text-emerald-700 dark:text-emerald-300">
+                  {metrics.breakEvenRoasLtv.toFixed(2)}x
+                </div>
+              </div>
+              <div>
+                <div className="text-xs text-emerald-600 dark:text-emerald-400 mb-1">Marginal</div>
+                <div className={cn(
+                  'text-2xl font-bold',
+                  metrics.currentRoas >= metrics.breakEvenRoasLtv
+                    ? 'text-emerald-600 dark:text-emerald-400'
+                    : 'text-rose-600 dark:text-rose-400'
+                )}>
+                  {metrics.currentRoas >= metrics.breakEvenRoasLtv ? '+' : ''}
+                  {((metrics.currentRoas / metrics.breakEvenRoasLtv - 1) * 100).toFixed(0)}%
+                </div>
+              </div>
+            </div>
+
+            {/* LTV boost explanation */}
+            {metrics.ltvMultiplier && metrics.ltvMultiplier > 1 && (
+              <div className="mt-3 p-2 bg-white/50 dark:bg-slate-800/50 rounded-lg text-center">
+                <span className="text-xs text-emerald-700 dark:text-emerald-300">
+                  💡 Dina kunder köper <strong>{metrics.ltvMultiplier.toFixed(1)}x</strong> i genomsnitt →{' '}
+                  Du kan betala <strong>{metrics.ltvAcquisitionBoost?.toFixed(0)}% mer</strong> för att skaffa nya kunder!
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Traditional BE ROAS - Secondary */}
+          <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-200 dark:border-slate-700">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate-600 dark:text-slate-400">Traditionell BE ROAS (första köp)</span>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger>
+                      <Info className="w-3 h-3 text-slate-400" />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Baserad endast på första köpet - ignorerar återköp</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                  {metrics.breakEvenRoasNewCustomers.toFixed(2)}x
+                </span>
+                <div className={cn(
+                  'px-2 py-0.5 rounded text-xs font-medium',
+                  metrics.currentRoas >= metrics.breakEvenRoasNewCustomers
+                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300'
+                    : 'bg-rose-100 text-rose-700 dark:bg-rose-900/50 dark:text-rose-300'
+                )}>
+                  {metrics.currentRoas >= metrics.breakEvenRoasNewCustomers ? 'OK' : 'Under'}
+                </div>
               </div>
             </div>
           </div>

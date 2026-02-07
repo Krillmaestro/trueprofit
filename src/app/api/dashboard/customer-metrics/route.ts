@@ -281,6 +281,39 @@ export async function GET(request: NextRequest) {
   // Period-specific revenue (ex VAT)
   const periodRevenue = periodOrders.reduce((sum, o) => sum + calculateOrderRevenueExVat(o), 0)
 
+  // ==========================================
+  // LTV-BASERAD BREAK-EVEN ROAS BERÄKNING
+  // ==========================================
+  //
+  // Traditionell Break-Even ROAS räknar bara på första köpet.
+  // Men om kunder återkommer så kan du faktiskt betala MER för att skaffa dem!
+  //
+  // Exempel:
+  // - AOV (Average Order Value) = 400 kr
+  // - LTV (Lifetime Value) = 600 kr (kunden köper i snitt 1.5 gånger)
+  // - LTV/AOV = 1.5 (varje kund genererar 50% mer intäkt över tid)
+  //
+  // Om traditionell Break-Even ROAS = 2.0x
+  // Då är LTV Break-Even ROAS = 2.0 / 1.5 = 1.33x
+  //
+  // Detta betyder: Du kan acceptera en ROAS på 1.33x på nya kunder
+  // och ändå gå plus minus noll, eftersom de köper igen!
+  //
+  const ltvMultiplier = aov > 0 ? ltv / aov : 1
+  const breakEvenRoasLtv = ltvMultiplier > 0
+    ? breakEvenRoasNewCustomers / ltvMultiplier
+    : breakEvenRoasNewCustomers
+
+  // Calculate how much more you can afford to spend per customer acquisition
+  // compared to just looking at first order
+  const ltvAcquisitionBoost = ltvMultiplier > 1
+    ? ((ltvMultiplier - 1) * 100)  // e.g., 1.5x means 50% more spending power
+    : 0
+
+  // Calculate max CAC based on LTV (industry standard: CAC should be < LTV/3)
+  const maxCacForProfitability = ltv / 3
+  const cacHealthy = cac > 0 && cac <= maxCacForProfitability
+
   return NextResponse.json({
     metrics: {
       // Customer counts
@@ -314,10 +347,17 @@ export async function GET(request: NextRequest) {
       totalRevenueAllTime: totalRevenue,
       periodRevenueCalc: periodRevenue,
 
-      // Break-Even ROAS for new customers
-      breakEvenRoasNewCustomers,
+      // Break-Even ROAS calculations
+      breakEvenRoasNewCustomers,      // Traditional: based on first order only
+      breakEvenRoasLtv,               // LTV-based: accounts for repeat purchases
+      ltvMultiplier,                  // How many times a customer buys (LTV/AOV)
+      ltvAcquisitionBoost,            // % more you can spend due to LTV
       currentRoas: totalAdSpend > 0 ? adRevenue / totalAdSpend : 0,
       adRevenue,
+
+      // CAC health metrics
+      maxCacForProfitability,         // Max CAC for 3:1 LTV:CAC ratio
+      cacHealthy,                     // Whether current CAC is healthy
     },
     period: {
       startDate: dateFilter.gte.toISOString(),
