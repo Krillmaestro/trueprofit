@@ -24,15 +24,16 @@ interface SyncResult {
  *
  * POST /api/sync/all
  * Body: {
- *   dateFrom?: string,   // Default: 30 days ago for Shopify, 7 days for ads
+ *   dateFrom?: string,   // For historical/full sync - default: uses lastSyncAt
  *   dateTo?: string,     // Default: today
- *   fullSync?: boolean   // If true, sync ALL Shopify data from dateFrom (with pagination)
+ *   fullSync?: boolean   // If true, sync ALL data from dateFrom (ignores lastSyncAt)
  * }
  *
- * IMPORTANT CHANGES:
- * - Now uses pagination for Shopify to sync ALL orders (not just first 250)
- * - fullSync mode syncs everything from dateFrom with proper pagination
- * - Better date handling for ads (respects dateFrom/dateTo)
+ * SMART SYNC BEHAVIOR:
+ * - Shopify: Only syncs orders UPDATED since lastSyncAt (not all orders!)
+ *   This is fast because it only gets new/changed orders
+ * - Ads: Syncs last 7 days (needed because ad data can change retroactively)
+ * - fullSync: Forces sync from dateFrom, ignoring lastSyncAt
  */
 export async function POST(request: NextRequest) {
   const session = await getServerSession(authOptions)
@@ -112,23 +113,19 @@ export async function POST(request: NextRequest) {
   const results: SyncResult[] = []
   const syncPromises: Promise<void>[] = []
 
-  // Sync Shopify stores (with pagination for full sync)
+  // Sync Shopify stores
   for (const store of stores) {
     if (!store.shopifyAccessTokenEncrypted) continue
 
-    // Use the earlier of lastSyncAt or shopifyDateFrom
-    // Unless fullSync is true, then always use shopifyDateFrom
-    let syncFromDate: Date
-    if (fullSync) {
-      syncFromDate = shopifyDateFrom
-    } else if (store.lastSyncAt) {
-      syncFromDate = store.lastSyncAt < shopifyDateFrom ? shopifyDateFrom : store.lastSyncAt
-    } else {
-      syncFromDate = shopifyDateFrom
-    }
+    // SMART SYNC: Use lastSyncAt for incremental sync (much faster!)
+    // fullSync: Ignore lastSyncAt and sync from dateFrom
+    const isIncrementalSync = !fullSync && store.lastSyncAt !== null
+    const syncFromDate = fullSync
+      ? shopifyDateFrom
+      : (store.lastSyncAt || shopifyDateFrom)
 
     syncPromises.push(
-      syncShopifyStoreWithPagination(store, syncFromDate).then(result => {
+      syncShopifyStoreIncremental(store, syncFromDate, isIncrementalSync).then(result => {
         results.push({ platform: `Shopify: ${store.name}`, ...result })
       })
     )
@@ -176,17 +173,24 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * Sync Shopify store WITH PAGINATION
- * This ensures ALL orders are synced, not just first 250
+ * Sync Shopify store with SMART INCREMENTAL SYNC
+ *
+ * - Incremental mode (isIncremental=true): Uses updated_at_min
+ *   Only fetches orders that have been UPDATED since last sync.
+ *   This is FAST because most days you only have a few new/updated orders.
+ *
+ * - Full mode (isIncremental=false): Uses created_at_min
+ *   Fetches ALL orders created since the date. Use for initial sync.
  */
-async function syncShopifyStoreWithPagination(
+async function syncShopifyStoreIncremental(
   store: {
     id: string
     name: string
     shopifyDomain: string
     shopifyAccessTokenEncrypted: string | null
   },
-  sinceDate: Date
+  sinceDate: Date,
+  isIncremental: boolean
 ): Promise<{ success: boolean; count: number; error?: string }> {
   if (!store.shopifyAccessTokenEncrypted) {
     return { success: false, count: 0, error: 'No access token' }
@@ -213,7 +217,7 @@ async function syncShopifyStoreWithPagination(
     let pageInfo: string | undefined
     let pageNumber = 0
 
-    // PAGINATION LOOP - fetch ALL orders
+    // PAGINATION LOOP
     do {
       pageNumber++
 
@@ -221,6 +225,7 @@ async function syncShopifyStoreWithPagination(
         limit: number
         page_info?: string
         created_at_min?: string
+        updated_at_min?: string
         status: string
       } = {
         limit: 250,
@@ -229,7 +234,12 @@ async function syncShopifyStoreWithPagination(
 
       if (pageInfo) {
         params.page_info = pageInfo
+      } else if (isIncremental) {
+        // INCREMENTAL: Only get orders UPDATED since last sync
+        // This is much faster - typically only a few orders per day
+        params.updated_at_min = sinceDate.toISOString()
       } else {
+        // FULL SYNC: Get all orders CREATED since date
         params.created_at_min = sinceDate.toISOString()
       }
 
