@@ -127,18 +127,29 @@ async function syncFacebookAds(
       const campaignId = insight.campaign_id || null
       const adSetId = insight.adset_id || null
 
-      // Use proper upsert with the unique constraint
-      // Schema: @@unique([adAccountId, date, campaignId, adSetId])
-      await tx.adSpend.upsert({
+      // IMPORTANT: Use empty string consistently for null campaignId/adSetId
+      // This ensures upsert works correctly with the unique constraint
+      const normalizedCampaignId = campaignId || ''
+      const normalizedAdSetId = adSetId || ''
+
+      // First, try to delete any existing record for this combination
+      // This handles the null vs empty string mismatch issue
+      await tx.adSpend.deleteMany({
         where: {
-          adAccountId_date_campaignId_adSetId: {
-            adAccountId: adAccount.id,
-            date,
-            campaignId: campaignId ?? '',  // Prisma needs non-null for compound unique
-            adSetId: adSetId ?? '',
-          },
+          adAccountId: adAccount.id,
+          date,
+          OR: [
+            { campaignId: normalizedCampaignId, adSetId: normalizedAdSetId },
+            { campaignId: campaignId, adSetId: adSetId },
+            { campaignId: normalizedCampaignId, adSetId: adSetId },
+            { campaignId: campaignId, adSetId: normalizedAdSetId },
+          ],
         },
-        create: {
+      })
+
+      // Then create fresh record
+      await tx.adSpend.create({
+        data: {
           adAccountId: adAccount.id,
           date,
           spend,
@@ -150,21 +161,9 @@ async function syncFacebookAds(
           cpc,
           cpm,
           currency: adAccount.currency,
-          campaignId,
+          campaignId: normalizedCampaignId || null,
           campaignName: insight.campaign_name || null,
-          adSetId,
-          adSetName: insight.adset_name || null,
-        },
-        update: {
-          spend,
-          impressions,
-          clicks,
-          conversions,
-          revenue,
-          roas,
-          cpc,
-          cpm,
-          campaignName: insight.campaign_name || null,
+          adSetId: normalizedAdSetId || null,
           adSetName: insight.adset_name || null,
         },
       })
@@ -252,18 +251,25 @@ async function syncGoogleAds(
       const date = normalizeDate(row.date)
       const campaignId = row.campaignId || null
 
-      // Use proper upsert with the unique constraint
-      // For Google Sheets, adSetId is always null
-      await tx.adSpend.upsert({
+      // IMPORTANT: Use empty string consistently for null campaignId
+      const normalizedCampaignId = campaignId || ''
+
+      // First, delete any existing record for this combination
+      await tx.adSpend.deleteMany({
         where: {
-          adAccountId_date_campaignId_adSetId: {
-            adAccountId: adAccount.id,
-            date,
-            campaignId: campaignId ?? '',
-            adSetId: '',  // Google Sheets doesn't have ad sets
-          },
+          adAccountId: adAccount.id,
+          date,
+          OR: [
+            { campaignId: normalizedCampaignId },
+            { campaignId: campaignId },
+          ],
+          adSetId: null,
         },
-        create: {
+      })
+
+      // Then create fresh record
+      await tx.adSpend.create({
+        data: {
           adAccountId: adAccount.id,
           date,
           spend: row.cost,
@@ -275,21 +281,10 @@ async function syncGoogleAds(
           cpc,
           cpm,
           currency: row.currency || adAccount.currency,
-          campaignId,
+          campaignId: normalizedCampaignId || null,
           campaignName: row.campaignName || null,
           adSetId: null,
           adSetName: null,
-        },
-        update: {
-          spend: row.cost,
-          impressions: row.impressions,
-          clicks: row.clicks,
-          conversions: Math.round(row.conversions),
-          revenue: row.conversionValue,
-          roas,
-          cpc,
-          cpm,
-          campaignName: row.campaignName || null,
         },
       })
 

@@ -397,17 +397,21 @@ async function syncFacebookAdsAccount(
         const campaignId = insight.campaign_id || null
         const adSetId = insight.adset_id || null
 
-        // Use proper upsert with unique constraint
-        await tx.adSpend.upsert({
+        // Delete existing record first, then create new one
+        // This avoids null vs empty string mismatch issues with unique constraint
+        await tx.adSpend.deleteMany({
           where: {
-            adAccountId_date_campaignId_adSetId: {
-              adAccountId: account.id,
-              date,
-              campaignId: campaignId ?? '',
-              adSetId: adSetId ?? '',
-            },
+            adAccountId: account.id,
+            date,
+            OR: [
+              { campaignId: campaignId || '', adSetId: adSetId || '' },
+              { campaignId, adSetId },
+            ],
           },
-          create: {
+        })
+
+        await tx.adSpend.create({
+          data: {
             adAccountId: account.id,
             date,
             spend,
@@ -422,18 +426,6 @@ async function syncFacebookAdsAccount(
             campaignId,
             campaignName: insight.campaign_name || null,
             adSetId,
-            adSetName: insight.adset_name || null,
-          },
-          update: {
-            spend,
-            impressions,
-            clicks,
-            conversions,
-            revenue,
-            roas,
-            cpc,
-            cpm,
-            campaignName: insight.campaign_name || null,
             adSetName: insight.adset_name || null,
           },
         })
@@ -545,18 +537,27 @@ async function syncGoogleAdsFromSheets(
           const cpm = row.impressions > 0 ? (row.cost / row.impressions) * 1000 : 0
           const campaignId = row.campaignId || null
 
-          // Use proper upsert with unique constraint
-          // Google Sheets doesn't have ad sets, so adSetId is always empty string
-          await tx.adSpend.upsert({
+          // Use delete-then-create pattern to avoid null vs empty string mismatch issues
+          // Google Sheets doesn't have ad sets, so adSetId is always null
+          const normalizedCampaignId = campaignId || ''
+
+          // First, delete any existing record for this combination
+          await tx.adSpend.deleteMany({
             where: {
-              adAccountId_date_campaignId_adSetId: {
-                adAccountId: account.id,
-                date,
-                campaignId: campaignId ?? '',
-                adSetId: '',
-              },
+              adAccountId: account.id,
+              date,
+              OR: [
+                { campaignId: normalizedCampaignId, adSetId: '' },
+                { campaignId: normalizedCampaignId, adSetId: null },
+                { campaignId: campaignId, adSetId: '' },
+                { campaignId: campaignId, adSetId: null },
+              ],
             },
-            create: {
+          })
+
+          // Then create fresh record
+          await tx.adSpend.create({
+            data: {
               adAccountId: account.id,
               date,
               spend: row.cost,
@@ -568,21 +569,10 @@ async function syncGoogleAdsFromSheets(
               cpc,
               cpm,
               currency: row.currency || account.currency,
-              campaignId,
+              campaignId: campaignId || null,
               campaignName: row.campaignName || null,
               adSetId: null,
               adSetName: null,
-            },
-            update: {
-              spend: row.cost,
-              impressions: row.impressions,
-              clicks: row.clicks,
-              conversions: Math.round(row.conversions),
-              revenue: row.conversionValue,
-              roas,
-              cpc,
-              cpm,
-              campaignName: row.campaignName || null,
             },
           })
 
