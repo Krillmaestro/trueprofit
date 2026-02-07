@@ -8,8 +8,8 @@ import { ShopifyClient } from '@/services/shopify/client'
 import { FacebookAdsClient, extractConversions, extractRoas } from '@/services/ads/facebook'
 import { GoogleSheetsAdsClient, refreshGoogleSheetsToken } from '@/services/ads/google-sheets'
 
-// Shopify rate limit delay
-const SHOPIFY_API_DELAY_MS = 600
+// Shopify rate limit delay - 500ms for 2 req/sec limit
+const SHOPIFY_API_DELAY_MS = 500
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
 interface SyncResult {
@@ -20,10 +20,19 @@ interface SyncResult {
 }
 
 /**
- * Unified sync endpoint - syncs Shopify, Facebook Ads, and Google Ads (via Sheets) in parallel
+ * Unified sync endpoint - syncs Shopify, Facebook Ads, and Google Ads (via Sheets)
  *
  * POST /api/sync/all
- * Body: { dateFrom?: string, dateTo?: string }
+ * Body: {
+ *   dateFrom?: string,   // Default: 30 days ago for Shopify, 7 days for ads
+ *   dateTo?: string,     // Default: today
+ *   fullSync?: boolean   // If true, sync ALL Shopify data from dateFrom (with pagination)
+ * }
+ *
+ * IMPORTANT CHANGES:
+ * - Now uses pagination for Shopify to sync ALL orders (not just first 250)
+ * - fullSync mode syncs everything from dateFrom with proper pagination
+ * - Better date handling for ads (respects dateFrom/dateTo)
  */
 export async function POST(request: NextRequest) {
   const session = await getServerSession(authOptions)
@@ -47,15 +56,19 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json().catch(() => ({}))
-  const { dateFrom, dateTo } = body
+  const { dateFrom, dateTo, fullSync = false } = body
 
-  // Default to last 7 days if no dates provided
+  // Default dates
   const now = new Date()
-  const defaultDateFrom = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-  const defaultDateTo = now.toISOString().split('T')[0]
 
-  const syncDateFrom = dateFrom || defaultDateFrom
-  const syncDateTo = dateTo || defaultDateTo
+  // For Shopify: 30 days default, or use provided dateFrom
+  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+  const shopifyDateFrom = dateFrom ? new Date(dateFrom) : thirtyDaysAgo
+
+  // For ads: 7 days default, or use provided dateFrom
+  const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+  const adsDateFrom = dateFrom || sevenDaysAgo.toISOString().split('T')[0]
+  const adsDateTo = dateTo || now.toISOString().split('T')[0]
 
   // Get user's team
   const teamMember = await prisma.teamMember.findFirst({
@@ -99,12 +112,23 @@ export async function POST(request: NextRequest) {
   const results: SyncResult[] = []
   const syncPromises: Promise<void>[] = []
 
-  // Sync Shopify stores
+  // Sync Shopify stores (with pagination for full sync)
   for (const store of stores) {
     if (!store.shopifyAccessTokenEncrypted) continue
 
+    // Use the earlier of lastSyncAt or shopifyDateFrom
+    // Unless fullSync is true, then always use shopifyDateFrom
+    let syncFromDate: Date
+    if (fullSync) {
+      syncFromDate = shopifyDateFrom
+    } else if (store.lastSyncAt) {
+      syncFromDate = store.lastSyncAt < shopifyDateFrom ? shopifyDateFrom : store.lastSyncAt
+    } else {
+      syncFromDate = shopifyDateFrom
+    }
+
     syncPromises.push(
-      syncShopifyStore(store, store.lastSyncAt).then(result => {
+      syncShopifyStoreWithPagination(store, syncFromDate).then(result => {
         results.push({ platform: `Shopify: ${store.name}`, ...result })
       })
     )
@@ -116,14 +140,14 @@ export async function POST(request: NextRequest) {
 
     if (account.platform === 'FACEBOOK') {
       syncPromises.push(
-        syncFacebookAdsAccount(account, syncDateFrom, syncDateTo).then(result => {
+        syncFacebookAdsAccount(account, adsDateFrom, adsDateTo).then(result => {
           results.push({ platform: `Facebook: ${account.accountName || account.platformAccountId}`, ...result })
         })
       )
     } else if (account.platform === 'GOOGLE') {
       // For Google, we use Google Sheets integration
       syncPromises.push(
-        syncGoogleAdsFromSheets(account, syncDateFrom, syncDateTo).then(result => {
+        syncGoogleAdsFromSheets(account, adsDateFrom, adsDateTo).then(result => {
           results.push({ platform: `Google Ads: ${account.accountName || account.platformAccountId}`, ...result })
         })
       )
@@ -151,14 +175,18 @@ export async function POST(request: NextRequest) {
   })
 }
 
-async function syncShopifyStore(
+/**
+ * Sync Shopify store WITH PAGINATION
+ * This ensures ALL orders are synced, not just first 250
+ */
+async function syncShopifyStoreWithPagination(
   store: {
     id: string
     name: string
     shopifyDomain: string
     shopifyAccessTokenEncrypted: string | null
   },
-  lastSyncAt: Date | null
+  sinceDate: Date
 ): Promise<{ success: boolean; count: number; error?: string }> {
   if (!store.shopifyAccessTokenEncrypted) {
     return { success: false, count: 0, error: 'No access token' }
@@ -171,25 +199,6 @@ async function syncShopifyStore(
       accessToken,
     })
 
-    // Sync orders from last 30 days if no lastSyncAt, otherwise from lastSyncAt
-    // This ensures we always get recent orders even if sync was missed
-    const thirtyDaysAgo = new Date()
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
-
-    // Use the earlier of lastSyncAt or 30 days ago to ensure we don't miss orders
-    const sinceDate = lastSyncAt
-      ? (lastSyncAt < thirtyDaysAgo ? thirtyDaysAgo : lastSyncAt)
-      : thirtyDaysAgo
-
-    // Sync orders - get up to 250 orders per request
-    const response = await client.getOrders({
-      limit: 250,
-      created_at_min: sinceDate.toISOString(),
-      status: 'any',
-    })
-
-    const { orders } = response.data
-
     // Pre-fetch variants for linking
     const allVariants = await prisma.productVariant.findMany({
       where: { product: { storeId: store.id } },
@@ -200,130 +209,175 @@ async function syncShopifyStore(
       variantLookup.set(v.shopifyVariantId.toString(), v.id)
     }
 
-    for (const orderData of orders) {
-      const order = await prisma.order.upsert({
-        where: {
-          storeId_shopifyOrderId: {
-            storeId: store.id,
-            shopifyOrderId: BigInt(orderData.id),
-          },
-        },
-        create: {
-          storeId: store.id,
-          shopifyOrderId: BigInt(orderData.id),
-          orderNumber: orderData.order_number?.toString() || orderData.name,
-          orderName: orderData.name,
-          currency: orderData.currency,
-          totalPrice: parseFloat(orderData.total_price || '0'),
-          subtotalPrice: parseFloat(orderData.subtotal_price || '0'),
-          totalTax: parseFloat(orderData.total_tax || '0'),
-          totalDiscounts: parseFloat(orderData.total_discounts || '0'),
-          totalShippingPrice: parseFloat(orderData.total_shipping_price_set?.shop_money?.amount || '0'),
-          financialStatus: orderData.financial_status,
-          fulfillmentStatus: orderData.fulfillment_status,
-          processedAt: orderData.processed_at ? new Date(orderData.processed_at) : null,
-          cancelledAt: orderData.cancelled_at ? new Date(orderData.cancelled_at) : null,
-          customerFirstName: orderData.customer?.first_name,
-          customerLastName: orderData.customer?.last_name,
-          customerEmail: orderData.customer?.email,
-          shippingCountry: orderData.shipping_address?.country_code,
-          shippingCity: orderData.shipping_address?.city,
-          tags: orderData.tags ? orderData.tags.split(',').map((t: string) => t.trim()) : [],
-          note: orderData.note,
-          shopifyCreatedAt: new Date(orderData.created_at),
-          shopifyUpdatedAt: new Date(orderData.updated_at),
-        },
-        update: {
-          totalPrice: parseFloat(orderData.total_price || '0'),
-          subtotalPrice: parseFloat(orderData.subtotal_price || '0'),
-          totalTax: parseFloat(orderData.total_tax || '0'),
-          totalDiscounts: parseFloat(orderData.total_discounts || '0'),
-          totalShippingPrice: parseFloat(orderData.total_shipping_price_set?.shop_money?.amount || '0'),
-          financialStatus: orderData.financial_status,
-          fulfillmentStatus: orderData.fulfillment_status,
-          cancelledAt: orderData.cancelled_at ? new Date(orderData.cancelled_at) : null,
-          shopifyUpdatedAt: new Date(orderData.updated_at),
-        },
-      })
+    let totalCount = 0
+    let pageInfo: string | undefined
+    let pageNumber = 0
 
-      // Sync line items
-      for (const item of orderData.line_items || []) {
-        const variantId = item.variant_id
-          ? variantLookup.get(item.variant_id.toString()) || null
-          : null
+    // PAGINATION LOOP - fetch ALL orders
+    do {
+      pageNumber++
 
-        await prisma.orderLineItem.upsert({
-          where: {
-            orderId_shopifyLineItemId: {
-              orderId: order.id,
-              shopifyLineItemId: BigInt(item.id),
+      const params: {
+        limit: number
+        page_info?: string
+        created_at_min?: string
+        status: string
+      } = {
+        limit: 250,
+        status: 'any',
+      }
+
+      if (pageInfo) {
+        params.page_info = pageInfo
+      } else {
+        params.created_at_min = sinceDate.toISOString()
+      }
+
+      const response = await client.getOrders(params)
+      const { orders } = response.data
+
+      if (orders.length === 0) break
+
+      // Process orders
+      for (const orderData of orders) {
+        try {
+          const order = await prisma.order.upsert({
+            where: {
+              storeId_shopifyOrderId: {
+                storeId: store.id,
+                shopifyOrderId: BigInt(orderData.id),
+              },
             },
-          },
-          create: {
-            orderId: order.id,
-            shopifyLineItemId: BigInt(item.id),
-            shopifyProductId: item.product_id ? BigInt(item.product_id) : null,
-            shopifyVariantId: item.variant_id ? BigInt(item.variant_id) : null,
-            variantId,
-            title: item.title,
-            variantTitle: item.variant_title,
-            sku: item.sku,
-            quantity: item.quantity,
-            price: parseFloat(item.price || '0'),
-            totalDiscount: parseFloat(item.total_discount || '0'),
-            taxAmount: item.tax_lines?.reduce((sum: number, t: { price: string }) => sum + parseFloat(t.price || '0'), 0) || 0,
-          },
-          update: {
-            variantId,
-            quantity: item.quantity,
-            price: parseFloat(item.price || '0'),
-            totalDiscount: parseFloat(item.total_discount || '0'),
-          },
-        })
-      }
-
-      // Sync refunds
-      for (const refundData of orderData.refunds || []) {
-        const refundAmount = refundData.transactions?.reduce(
-          (sum: number, t: { amount: string }) => sum + parseFloat(t.amount || '0'),
-          0
-        ) || 0
-
-        await prisma.orderRefund.upsert({
-          where: {
-            orderId_shopifyRefundId: {
-              orderId: order.id,
-              shopifyRefundId: BigInt(refundData.id),
+            create: {
+              storeId: store.id,
+              shopifyOrderId: BigInt(orderData.id),
+              orderNumber: orderData.order_number?.toString() || orderData.name,
+              orderName: orderData.name,
+              currency: orderData.currency,
+              totalPrice: parseFloat(orderData.total_price || '0'),
+              subtotalPrice: parseFloat(orderData.subtotal_price || '0'),
+              totalTax: parseFloat(orderData.total_tax || '0'),
+              totalDiscounts: parseFloat(orderData.total_discounts || '0'),
+              totalShippingPrice: parseFloat(orderData.total_shipping_price_set?.shop_money?.amount || '0'),
+              financialStatus: orderData.financial_status,
+              fulfillmentStatus: orderData.fulfillment_status,
+              processedAt: orderData.processed_at ? new Date(orderData.processed_at) : null,
+              cancelledAt: orderData.cancelled_at ? new Date(orderData.cancelled_at) : null,
+              customerFirstName: orderData.customer?.first_name,
+              customerLastName: orderData.customer?.last_name,
+              customerEmail: orderData.customer?.email,
+              shippingCountry: orderData.shipping_address?.country_code,
+              shippingCity: orderData.shipping_address?.city,
+              tags: orderData.tags ? orderData.tags.split(',').map((t: string) => t.trim()) : [],
+              note: orderData.note,
+              shopifyCreatedAt: new Date(orderData.created_at),
+              shopifyUpdatedAt: new Date(orderData.updated_at),
             },
-          },
-          create: {
-            orderId: order.id,
-            shopifyRefundId: BigInt(refundData.id),
-            amount: refundAmount,
-            note: refundData.note || null,
-            restock: refundData.restock || false,
-            processedAt: new Date(refundData.created_at),
-          },
-          update: {
-            amount: refundAmount,
-            note: refundData.note || null,
-            restock: refundData.restock || false,
-          },
-        })
+            update: {
+              totalPrice: parseFloat(orderData.total_price || '0'),
+              subtotalPrice: parseFloat(orderData.subtotal_price || '0'),
+              totalTax: parseFloat(orderData.total_tax || '0'),
+              totalDiscounts: parseFloat(orderData.total_discounts || '0'),
+              totalShippingPrice: parseFloat(orderData.total_shipping_price_set?.shop_money?.amount || '0'),
+              financialStatus: orderData.financial_status,
+              fulfillmentStatus: orderData.fulfillment_status,
+              cancelledAt: orderData.cancelled_at ? new Date(orderData.cancelled_at) : null,
+              shopifyUpdatedAt: new Date(orderData.updated_at),
+            },
+          })
+
+          // Sync line items
+          for (const item of orderData.line_items || []) {
+            const variantId = item.variant_id
+              ? variantLookup.get(item.variant_id.toString()) || null
+              : null
+
+            await prisma.orderLineItem.upsert({
+              where: {
+                orderId_shopifyLineItemId: {
+                  orderId: order.id,
+                  shopifyLineItemId: BigInt(item.id),
+                },
+              },
+              create: {
+                orderId: order.id,
+                shopifyLineItemId: BigInt(item.id),
+                shopifyProductId: item.product_id ? BigInt(item.product_id) : null,
+                shopifyVariantId: item.variant_id ? BigInt(item.variant_id) : null,
+                variantId,
+                title: item.title,
+                variantTitle: item.variant_title,
+                sku: item.sku,
+                quantity: item.quantity,
+                price: parseFloat(item.price || '0'),
+                totalDiscount: parseFloat(item.total_discount || '0'),
+                taxAmount: item.tax_lines?.reduce((sum: number, t: { price: string }) => sum + parseFloat(t.price || '0'), 0) || 0,
+              },
+              update: {
+                variantId,
+                quantity: item.quantity,
+                price: parseFloat(item.price || '0'),
+                totalDiscount: parseFloat(item.total_discount || '0'),
+              },
+            })
+          }
+
+          // Sync refunds
+          for (const refundData of orderData.refunds || []) {
+            const refundAmount = refundData.transactions?.reduce(
+              (sum: number, t: { amount: string }) => sum + parseFloat(t.amount || '0'),
+              0
+            ) || 0
+
+            await prisma.orderRefund.upsert({
+              where: {
+                orderId_shopifyRefundId: {
+                  orderId: order.id,
+                  shopifyRefundId: BigInt(refundData.id),
+                },
+              },
+              create: {
+                orderId: order.id,
+                shopifyRefundId: BigInt(refundData.id),
+                amount: refundAmount,
+                note: refundData.note || null,
+                restock: refundData.restock || false,
+                processedAt: new Date(refundData.created_at),
+              },
+              update: {
+                amount: refundAmount,
+                note: refundData.note || null,
+                restock: refundData.restock || false,
+              },
+            })
+          }
+
+          // Update order's total refund amount
+          const totalRefundAmount = (orderData.refunds || []).reduce((sum: number, r: { transactions?: Array<{ amount: string }> }) => {
+            return sum + (r.transactions?.reduce((tSum: number, t: { amount: string }) => tSum + parseFloat(t.amount || '0'), 0) || 0)
+          }, 0)
+
+          if (totalRefundAmount > 0) {
+            await prisma.order.update({
+              where: { id: order.id },
+              data: { totalRefundAmount },
+            })
+          }
+
+          totalCount++
+        } catch (err) {
+          console.error(`Error processing order ${orderData.id}:`, err)
+          // Continue with next order
+        }
       }
 
-      // Update order's total refund amount
-      const totalRefundAmount = (orderData.refunds || []).reduce((sum: number, r: { transactions?: Array<{ amount: string }> }) => {
-        return sum + (r.transactions?.reduce((tSum: number, t: { amount: string }) => tSum + parseFloat(t.amount || '0'), 0) || 0)
-      }, 0)
+      pageInfo = response.nextPageInfo
 
-      if (totalRefundAmount > 0) {
-        await prisma.order.update({
-          where: { id: order.id },
-          data: { totalRefundAmount },
-        })
+      // Rate limit delay between pages
+      if (pageInfo) {
+        await delay(SHOPIFY_API_DELAY_MS)
       }
-    }
+    } while (pageInfo)
 
     // Update last sync time
     await prisma.store.update({
@@ -331,7 +385,7 @@ async function syncShopifyStore(
       data: { lastSyncAt: new Date() },
     })
 
-    return { success: true, count: orders.length }
+    return { success: true, count: totalCount }
   } catch (error) {
     console.error(`Shopify sync error for ${store.name}:`, error)
     return {
