@@ -11,6 +11,24 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  // Allow iframe embedding from MetaAds dashboard
+  async headers() {
+    return [
+      {
+        source: '/(.*)',
+        headers: [
+          {
+            key: 'X-Frame-Options',
+            value: 'ALLOW-FROM https://meta-ads-upload.vercel.app',
+          },
+          {
+            key: 'Content-Security-Policy',
+            value: "frame-ancestors 'self' https://meta-ads-upload.vercel.app",
+          },
+        ],
+      },
+    ];
+  },
 };
 
 // Sentry configuration
