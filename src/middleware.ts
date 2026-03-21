@@ -3,7 +3,7 @@ import type { NextRequest } from 'next/server'
 import { getToken } from 'next-auth/jwt'
 
 // Paths that don't require authentication
-const publicPaths = ['/login', '/register', '/api/auth', '/api/health']
+const publicPaths = ['/login', '/register', '/api/auth', '/api/health', '/api/setup-password']
 
 // Paths that should redirect to dashboard if already logged in
 const authPaths = ['/login', '/register']
