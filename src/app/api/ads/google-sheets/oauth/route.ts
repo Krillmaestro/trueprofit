@@ -53,9 +53,12 @@ export async function GET(request: NextRequest) {
   // Step 1: Initiate OAuth flow
   if (!code) {
     const redirectUri = `${APP_URL}/api/ads/google-sheets/oauth`
+    // Only the Sheets API is used to read the spreadsheet by ID, so we request
+    // the single sensitive scope spreadsheets.readonly. The previously-requested
+    // drive.readonly is a "restricted" scope that was never used and only made
+    // OAuth verification/publishing harder.
     const scopes = [
       'https://www.googleapis.com/auth/spreadsheets.readonly',
-      'https://www.googleapis.com/auth/drive.readonly',
     ].join(' ')
 
     // Generate state token for CSRF protection
