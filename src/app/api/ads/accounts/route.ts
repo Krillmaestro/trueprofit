@@ -31,6 +31,8 @@ export async function GET() {
         isActive: true,
         lastSyncAt: true,
         lastSyncStatus: true,
+        syncError: true,
+        tokenExpiresAt: true,
         currency: true,
       },
       orderBy: {

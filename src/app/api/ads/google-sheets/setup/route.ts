@@ -36,6 +36,7 @@ export async function POST(request: NextRequest) {
   const account = await prisma.adAccount.findFirst({
     where: {
       platformAccountId: accountId,
+      platform: 'GOOGLE',
       team: {
         members: {
           some: { userId: session.user.id },
@@ -50,6 +51,10 @@ export async function POST(request: NextRequest) {
 
   if (!account.accessTokenEncrypted) {
     return NextResponse.json({ error: 'Ingen access token' }, { status: 400 })
+  }
+
+  if (!account.platformAccountId.startsWith('sheets:pending_')) {
+    return NextResponse.json({ error: 'Start a new Google Sheets connection first' }, { status: 400 })
   }
 
   // Test the connection
@@ -76,14 +81,23 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
-    // Update the account with the real spreadsheet ID
-    await prisma.adAccount.update({
-      where: { id: account.id },
-      data: {
-        platformAccountId: `sheets:${spreadsheetId}`,
-        accountName: `Google Ads (via Sheets)`,
-        isActive: true,
-      },
+    // Reconnecting a sheet keeps its existing account ID and spend history.
+    await prisma.$transaction(async tx => {
+      const key = { teamId: account.teamId, platform: 'GOOGLE' as const, platformAccountId: `sheets:${spreadsheetId}` }
+      await tx.adAccount.upsert({
+        where: { teamId_platform_platformAccountId: key },
+        create: {
+          ...key, accountName: 'Google Ads (via Sheets)', isActive: true,
+          currency: account.currency, accessTokenEncrypted: account.accessTokenEncrypted,
+          refreshTokenEncrypted: account.refreshTokenEncrypted, tokenExpiresAt: account.tokenExpiresAt,
+        },
+        update: {
+          isActive: true, accessTokenEncrypted: account.accessTokenEncrypted,
+          ...(account.refreshTokenEncrypted ? { refreshTokenEncrypted: account.refreshTokenEncrypted } : {}),
+          tokenExpiresAt: account.tokenExpiresAt, syncError: null,
+        },
+      })
+      await tx.adAccount.delete({ where: { id: account.id } })
     })
 
     return NextResponse.json({

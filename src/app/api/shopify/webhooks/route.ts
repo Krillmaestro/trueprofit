@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import crypto from 'crypto'
 import { prisma } from '@/lib/prisma'
+import { normalizeShopDomain } from '@/services/shopify/domain'
 import {
   generateWebhookId,
+  verifyWebhookHMAC,
   isWebhookProcessed,
   markWebhookProcessed,
 } from '@/lib/webhooks/handler'
@@ -10,35 +11,27 @@ import { processRefund, ShopifyRefundData } from '@/lib/sync/refund-processor'
 
 const SHOPIFY_API_SECRET = process.env.SHOPIFY_API_SECRET!
 
-// Verify Shopify webhook HMAC
-function verifyWebhook(rawBody: string, hmacHeader: string): boolean {
-  const generatedHmac = crypto
-    .createHmac('sha256', SHOPIFY_API_SECRET)
-    .update(rawBody, 'utf8')
-    .digest('base64')
-
-  return crypto.timingSafeEqual(
-    Buffer.from(generatedHmac),
-    Buffer.from(hmacHeader)
-  )
-}
-
 export async function POST(request: NextRequest) {
   const rawBody = await request.text()
   const hmacHeader = request.headers.get('x-shopify-hmac-sha256')
   const topic = request.headers.get('x-shopify-topic')
   const shopDomain = request.headers.get('x-shopify-shop-domain')
 
-  if (!hmacHeader || !verifyWebhook(rawBody, hmacHeader)) {
+  if (!hmacHeader || !verifyWebhookHMAC(rawBody, hmacHeader, SHOPIFY_API_SECRET)) {
     return NextResponse.json({ error: 'Invalid HMAC' }, { status: 401 })
   }
 
-  const data = JSON.parse(rawBody)
+  const normalizedShop = shopDomain ? normalizeShopDomain(shopDomain) : null
+  if (!normalizedShop || !topic) return NextResponse.json({ error: 'Missing webhook headers' }, { status: 400 })
+  let data
+  try { data = JSON.parse(rawBody) } catch {
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
+  }
 
   // ═══════════════════════════════════════════════════════════
   // IDEMPOTENCY CHECK - Prevent duplicate webhook processing
   // ═══════════════════════════════════════════════════════════
-  const webhookId = generateWebhookId(
+  const webhookId = request.headers.get('x-shopify-webhook-id') || generateWebhookId(
     topic || 'unknown',
     shopDomain || 'unknown',
     data
@@ -58,7 +51,7 @@ export async function POST(request: NextRequest) {
 
   // Find the store
   const store = await prisma.store.findUnique({
-    where: { shopifyDomain: shopDomain?.replace('.myshopify.com', '') || '' },
+    where: { shopifyDomain: normalizedShop },
   })
 
   if (!store) {
