@@ -1,7 +1,9 @@
 // Google Ads API Client
 // Documentation: https://developers.google.com/google-ads/api/docs
 
-const GOOGLE_ADS_API_VERSION = 'v16'
+import { fetchIntegration } from '@/lib/integration-http'
+
+const GOOGLE_ADS_API_VERSION = process.env.GOOGLE_ADS_API_VERSION || 'v25'
 const GOOGLE_ADS_API_URL = `https://googleads.googleapis.com/${GOOGLE_ADS_API_VERSION}`
 
 export interface GoogleAdAccount {
@@ -9,6 +11,7 @@ export interface GoogleAdAccount {
   descriptiveName: string
   currencyCode: string
   timeZone: string
+  manager: boolean
 }
 
 export interface GoogleCampaign {
@@ -25,7 +28,7 @@ export interface GoogleAdsMetrics {
   campaignName?: string
   adGroupId?: string
   adGroupName?: string
-  cost: number // In micros (divide by 1,000,000)
+  cost: number // Account currency, already converted from micros
   impressions: number
   clicks: number
   conversions: number
@@ -40,7 +43,8 @@ export class GoogleAdsClient {
   constructor(accessToken: string, developerToken: string, customerId?: string) {
     this.accessToken = accessToken
     this.developerToken = developerToken
-    this.customerId = customerId
+    this.customerId = customerId?.replace(/-/g, '')
+    if (this.customerId && !/^\d+$/.test(this.customerId)) throw new Error('Invalid Google Ads manager ID')
   }
 
   private async request<T>(
@@ -58,7 +62,7 @@ export class GoogleAdsClient {
       headers['login-customer-id'] = this.customerId
     }
 
-    const response = await fetch(`${GOOGLE_ADS_API_URL}${endpoint}`, {
+    const response = await fetchIntegration(`${GOOGLE_ADS_API_URL}${endpoint}`, {
       method,
       headers,
       body: body ? JSON.stringify(body) : undefined,
@@ -69,12 +73,24 @@ export class GoogleAdsClient {
       throw new Error(error.error?.message || 'Google Ads API error')
     }
 
-    return response.json()
+    const data = await response.json()
+    if (endpoint.endsWith('/googleAds:searchStream')) {
+      if (!Array.isArray(data)) throw new Error('Invalid Google Ads streaming response')
+      return { results: data.flatMap(chunk => chunk.results || []) } as T
+    }
+    return data
   }
 
   async getAccessibleCustomers(): Promise<string[]> {
+    if (this.customerId) {
+      const clients = await this.request<{ results: Array<{ customerClient: { id: string } }> }>(
+        `/customers/${this.customerId}/googleAds:searchStream`, 'POST',
+        { query: "SELECT customer_client.id FROM customer_client WHERE customer_client.manager = FALSE AND customer_client.status = 'ENABLED'" }
+      )
+      return [...new Set(clients.results.map(row => String(row.customerClient.id)))]
+    }
     const response = await this.request<{ resourceNames: string[] }>('/customers:listAccessibleCustomers')
-    return response.resourceNames.map(name => name.split('/')[1])
+    return (response.resourceNames || []).map(name => name.split('/')[1])
   }
 
   async getCustomerInfo(customerId: string): Promise<GoogleAdAccount> {
@@ -83,7 +99,8 @@ export class GoogleAdsClient {
         customer.id,
         customer.descriptive_name,
         customer.currency_code,
-        customer.time_zone
+        customer.time_zone,
+        customer.manager
       FROM customer
     `
 
@@ -95,11 +112,13 @@ export class GoogleAdsClient {
     )
 
     const customer = response.results[0]?.customer
+    if (!customer) throw new Error('Google Ads customer is not accessible')
     return {
       customerId: customer?.id || customerId,
       descriptiveName: customer?.descriptive_name || customer?.descriptiveName || 'Unknown',
       currencyCode: customer?.currency_code || customer?.currencyCode || 'USD',
       timeZone: customer?.time_zone || customer?.timeZone || 'UTC',
+      manager: customer.manager === true,
     }
   }
 
@@ -204,7 +223,7 @@ export async function exchangeGoogleAuthCode(
   clientId: string,
   clientSecret: string,
   redirectUri: string
-): Promise<{ access_token: string; refresh_token: string; expires_in: number }> {
+): Promise<{ access_token: string; refresh_token?: string; expires_in: number }> {
   const response = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: {

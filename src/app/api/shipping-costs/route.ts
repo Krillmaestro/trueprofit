@@ -222,30 +222,3 @@ export async function DELETE(request: NextRequest) {
 
   return NextResponse.json({ success: true })
 }
-
-// Helper function to calculate shipping cost for an order
-export function calculateShippingCost(
-  itemCount: number,
-  tiers: Array<{ minItems: number; maxItems: number | null; cost: number; costPerAdditionalItem: number }>
-): number {
-  // Find the matching tier
-  const matchingTier = tiers.find((tier) => {
-    if (itemCount < tier.minItems) return false
-    if (tier.maxItems === null) return true
-    return itemCount <= tier.maxItems
-  })
-
-  if (!matchingTier) {
-    // No matching tier, use the highest tier
-    const highestTier = tiers[tiers.length - 1]
-    if (!highestTier) return 0
-
-    // Calculate cost with per-additional-item pricing
-    const extraItems = itemCount - highestTier.minItems
-    return highestTier.cost + extraItems * highestTier.costPerAdditionalItem
-  }
-
-  // Calculate cost with per-additional-item pricing if applicable
-  const extraItems = Math.max(0, itemCount - matchingTier.minItems)
-  return matchingTier.cost + extraItems * matchingTier.costPerAdditionalItem
-}

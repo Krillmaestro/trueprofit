@@ -2,11 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { decrypt, encrypt } from '@/lib/encryption'
+import { decrypt } from '@/lib/encryption'
 import { syncRateLimiter, getRateLimitKey, getRateLimitHeaders } from '@/lib/rate-limit'
 import { ShopifyClient } from '@/services/shopify/client'
-import { FacebookAdsClient, extractConversions, extractRoas } from '@/services/ads/facebook'
-import { GoogleSheetsAdsClient, refreshGoogleSheetsToken } from '@/services/ads/google-sheets'
+import { syncAdAccount, validDateRange } from '@/lib/sync/ad-account'
 
 // Shopify rate limit delay - 500ms for 2 req/sec limit
 const SHOPIFY_API_DELAY_MS = 500
@@ -70,6 +69,10 @@ export async function POST(request: NextRequest) {
   const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
   const adsDateFrom = dateFrom || sevenDaysAgo.toISOString().split('T')[0]
   const adsDateTo = dateTo || now.toISOString().split('T')[0]
+
+  if (!validDateRange(adsDateFrom, adsDateTo)) {
+    return NextResponse.json({ error: 'Invalid date range' }, { status: 400 })
+  }
 
   // Get user's team
   const teamMember = await prisma.teamMember.findFirst({
@@ -135,20 +138,11 @@ export async function POST(request: NextRequest) {
   for (const account of adAccounts) {
     if (!account.accessTokenEncrypted) continue
 
-    if (account.platform === 'FACEBOOK') {
-      syncPromises.push(
-        syncFacebookAdsAccount(account, adsDateFrom, adsDateTo).then(result => {
-          results.push({ platform: `Facebook: ${account.accountName || account.platformAccountId}`, ...result })
-        })
-      )
-    } else if (account.platform === 'GOOGLE') {
-      // For Google, we use Google Sheets integration
-      syncPromises.push(
-        syncGoogleAdsFromSheets(account, adsDateFrom, adsDateTo).then(result => {
-          results.push({ platform: `Google Ads: ${account.accountName || account.platformAccountId}`, ...result })
-        })
-      )
-    }
+    syncPromises.push(
+      syncAdAccount(account, adsDateFrom, adsDateTo).then(result => {
+        results.push({ platform: `${account.platform}: ${account.accountName || account.platformAccountId}`, ...result })
+      })
+    )
   }
 
   // Wait for all syncs to complete
@@ -160,7 +154,7 @@ export async function POST(request: NextRequest) {
   const failCount = results.filter(r => !r.success).length
 
   return NextResponse.json({
-    success: true,
+    success: failCount === 0,
     message: `Synkade ${totalSynced} poster från ${successCount} källor`,
     results,
     summary: {
@@ -197,6 +191,7 @@ async function syncShopifyStoreIncremental(
   }
 
   try {
+    const syncStartedAt = new Date()
     const accessToken = decrypt(store.shopifyAccessTokenEncrypted)
     const client = new ShopifyClient({
       shopDomain: store.shopifyDomain,
@@ -377,7 +372,7 @@ async function syncShopifyStoreIncremental(
           totalCount++
         } catch (err) {
           console.error(`Error processing order ${orderData.id}:`, err)
-          // Continue with next order
+          throw err
         }
       }
 
@@ -392,7 +387,7 @@ async function syncShopifyStoreIncremental(
     // Update last sync time
     await prisma.store.update({
       where: { id: store.id },
-      data: { lastSyncAt: new Date() },
+      data: { lastSyncAt: syncStartedAt, lastSyncStatus: 'SUCCESS', syncError: null },
     })
 
     return { success: true, count: totalCount }
@@ -402,292 +397,6 @@ async function syncShopifyStoreIncremental(
       success: false,
       count: 0,
       error: error instanceof Error ? error.message : 'Unknown error',
-    }
-  }
-}
-
-/**
- * Normalize date to midnight UTC for consistent storage
- */
-function normalizeDate(dateStr: string): Date {
-  const [year, month, day] = dateStr.split('-').map(Number)
-  return new Date(Date.UTC(year, month - 1, day, 0, 0, 0))
-}
-
-async function syncFacebookAdsAccount(
-  account: {
-    id: string
-    platformAccountId: string
-    accessTokenEncrypted: string | null
-    refreshTokenEncrypted: string | null
-    tokenExpiresAt: Date | null
-    currency: string
-  },
-  dateFrom: string,
-  dateTo: string
-): Promise<{ success: boolean; count: number; error?: string }> {
-  if (!account.accessTokenEncrypted) {
-    return { success: false, count: 0, error: 'No access token' }
-  }
-
-  try {
-    const accessToken = decrypt(account.accessTokenEncrypted)
-    const client = new FacebookAdsClient(accessToken)
-
-    const insights = await client.getInsights(
-      account.platformAccountId,
-      dateFrom,
-      dateTo,
-      'campaign'
-    )
-
-    let count = 0
-
-    // Use transaction for atomicity
-    await prisma.$transaction(async (tx) => {
-      for (const insight of insights) {
-        const spend = parseFloat(insight.spend || '0')
-        const impressions = parseInt(insight.impressions || '0', 10)
-        const clicks = parseInt(insight.clicks || '0', 10)
-        const conversions = extractConversions(insight.actions)
-        const roas = extractRoas(insight.purchase_roas)
-
-        const cpc = clicks > 0 ? spend / clicks : 0
-        const cpm = impressions > 0 ? (spend / impressions) * 1000 : 0
-        const revenue = roas * spend
-
-        // Normalize date to midnight UTC
-        const date = normalizeDate(insight.date_start)
-        const campaignId = insight.campaign_id || null
-        const adSetId = insight.adset_id || null
-
-        // Delete existing record first, then create new one
-        // This avoids null vs empty string mismatch issues with unique constraint
-        await tx.adSpend.deleteMany({
-          where: {
-            adAccountId: account.id,
-            date,
-            OR: [
-              { campaignId: campaignId || '', adSetId: adSetId || '' },
-              { campaignId, adSetId },
-            ],
-          },
-        })
-
-        await tx.adSpend.create({
-          data: {
-            adAccountId: account.id,
-            date,
-            spend,
-            impressions,
-            clicks,
-            conversions,
-            revenue,
-            roas,
-            cpc,
-            cpm,
-            currency: account.currency,
-            campaignId,
-            campaignName: insight.campaign_name || null,
-            adSetId,
-            adSetName: insight.adset_name || null,
-          },
-        })
-
-        count++
-      }
-    })
-
-    // Update last sync time
-    await prisma.adAccount.update({
-      where: { id: account.id },
-      data: {
-        lastSyncAt: new Date(),
-        lastSyncStatus: 'SUCCESS',
-        syncError: null,
-      },
-    })
-
-    return { success: true, count }
-  } catch (error) {
-    console.error('Facebook Ads sync error:', error)
-
-    await prisma.adAccount.update({
-      where: { id: account.id },
-      data: {
-        lastSyncStatus: 'FAILED',
-        syncError: error instanceof Error ? error.message : 'Unknown error',
-      },
-    })
-
-    return {
-      success: false,
-      count: 0,
-      error: error instanceof Error ? error.message : 'Unknown error',
-    }
-  }
-}
-
-async function syncGoogleAdsFromSheets(
-  account: {
-    id: string
-    platformAccountId: string
-    accessTokenEncrypted: string | null
-    refreshTokenEncrypted: string | null
-    tokenExpiresAt: Date | null
-    currency: string
-  },
-  dateFrom: string,
-  dateTo: string
-): Promise<{ success: boolean; count: number; error?: string }> {
-  if (!account.accessTokenEncrypted) {
-    return { success: false, count: 0, error: 'No access token' }
-  }
-
-  // The platformAccountId for Google Sheets integration contains the spreadsheet ID
-  // Format: "sheets:SPREADSHEET_ID" or just the spreadsheet ID
-  const spreadsheetId = account.platformAccountId.startsWith('sheets:')
-    ? account.platformAccountId.substring(7)
-    : account.platformAccountId
-
-  try {
-    let accessToken = decrypt(account.accessTokenEncrypted)
-
-    // Check if token needs refresh
-    if (account.tokenExpiresAt && account.tokenExpiresAt < new Date()) {
-      if (!account.refreshTokenEncrypted) {
-        return { success: false, count: 0, error: 'Token expired and no refresh token' }
-      }
-
-      const refreshToken = decrypt(account.refreshTokenEncrypted)
-      const clientId = process.env.GOOGLE_CLIENT_ID || ''
-      const clientSecret = process.env.GOOGLE_CLIENT_SECRET || ''
-
-      const newTokens = await refreshGoogleSheetsToken(refreshToken, clientId, clientSecret)
-      accessToken = newTokens.access_token
-
-      const tokenExpiresAt = new Date()
-      tokenExpiresAt.setSeconds(tokenExpiresAt.getSeconds() + newTokens.expires_in)
-
-      await prisma.adAccount.update({
-        where: { id: account.id },
-        data: {
-          accessTokenEncrypted: encrypt(accessToken),
-          tokenExpiresAt,
-        },
-      })
-    }
-
-    const client = new GoogleSheetsAdsClient({
-      accessToken,
-      spreadsheetId,
-    })
-
-    const data = await client.getAdSpendData(dateFrom, dateTo)
-    let count = 0
-
-    // Process in batches to avoid transaction timeout
-    const BATCH_SIZE = 50
-    for (let i = 0; i < data.length; i += BATCH_SIZE) {
-      const batch = data.slice(i, i + BATCH_SIZE)
-
-      // Use transaction with extended timeout for each batch
-      await prisma.$transaction(async (tx) => {
-        for (const row of batch) {
-          // Normalize date to midnight UTC for consistent storage
-          const date = normalizeDate(row.date)
-          const roas = row.cost > 0 ? row.conversionValue / row.cost : 0
-          const cpc = row.clicks > 0 ? row.cost / row.clicks : 0
-          const cpm = row.impressions > 0 ? (row.cost / row.impressions) * 1000 : 0
-          const campaignId = row.campaignId || null
-
-          // Use delete-then-create pattern to avoid null vs empty string mismatch issues
-          // Google Sheets doesn't have ad sets, so adSetId is always null
-          const normalizedCampaignId = campaignId || ''
-
-          // First, delete any existing record for this combination
-          await tx.adSpend.deleteMany({
-            where: {
-              adAccountId: account.id,
-              date,
-              OR: [
-                { campaignId: normalizedCampaignId, adSetId: '' },
-                { campaignId: normalizedCampaignId, adSetId: null },
-                { campaignId: campaignId, adSetId: '' },
-                { campaignId: campaignId, adSetId: null },
-              ],
-            },
-          })
-
-          // Then create fresh record
-          await tx.adSpend.create({
-            data: {
-              adAccountId: account.id,
-              date,
-              spend: row.cost,
-              impressions: row.impressions,
-              clicks: row.clicks,
-              conversions: Math.round(row.conversions),
-              revenue: row.conversionValue,
-              roas,
-              cpc,
-              cpm,
-              currency: row.currency || account.currency,
-              campaignId: campaignId || null,
-              campaignName: row.campaignName || null,
-              adSetId: null,
-              adSetName: null,
-            },
-          })
-
-          count++
-        }
-      }, { timeout: 30000 }) // 30 second timeout per batch
-    }
-
-    // Update last sync time
-    await prisma.adAccount.update({
-      where: { id: account.id },
-      data: {
-        lastSyncAt: new Date(),
-        lastSyncStatus: 'SUCCESS',
-        syncError: null,
-      },
-    })
-
-    return { success: true, count }
-  } catch (error) {
-    console.error('Google Ads (Sheets) sync error:', error)
-
-    // Create a more descriptive error message
-    let errorMessage = 'Unknown error'
-    if (error instanceof Error) {
-      errorMessage = error.message
-
-      // Check for common issues
-      if (error.message.includes('401') || error.message.includes('Unauthorized')) {
-        errorMessage = 'Din Google-inloggning har gått ut. Koppla om Google Sheets.'
-      } else if (error.message.includes('403') || error.message.includes('Forbidden')) {
-        errorMessage = 'Ingen åtkomst till Google Sheet. Kontrollera att du har delat sheetet.'
-      } else if (error.message.includes('404') || error.message.includes('not found')) {
-        errorMessage = 'Kunde inte hitta Google Sheet. Kontrollera URL:en.'
-      } else if (error.message.includes('refresh token')) {
-        errorMessage = 'Behöver logga in igen. Koppla om Google Sheets.'
-      }
-    }
-
-    await prisma.adAccount.update({
-      where: { id: account.id },
-      data: {
-        lastSyncStatus: 'FAILED',
-        syncError: errorMessage,
-      },
-    })
-
-    return {
-      success: false,
-      count: 0,
-      error: errorMessage,
     }
   }
 }

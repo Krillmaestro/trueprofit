@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { ensureUserTeam } from '@/lib/user-team'
 
 // This endpoint repairs a user's account by creating missing Team and TeamSettings
 export async function POST() {
@@ -12,82 +13,9 @@ export async function POST() {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
     }
 
-    const userId = session.user.id
-    const userEmail = session.user.email || ''
-    const userName = session.user.name || userEmail
-
-    // Check if user exists
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      include: { teamMembers: { include: { team: true } } },
-    })
-
-    if (!user) {
-      return NextResponse.json({ error: 'User not found in database' }, { status: 404 })
-    }
-
-    // Check if user already has a team
-    if (user.teamMembers.length > 0) {
-      const team = user.teamMembers[0].team
-
-      // Check if team has settings
-      const settings = await prisma.teamSettings.findUnique({
-        where: { teamId: team.id },
-      })
-
-      if (!settings) {
-        // Create missing settings
-        await prisma.teamSettings.create({
-          data: {
-            teamId: team.id,
-            defaultCurrency: 'SEK',
-            timezone: 'Europe/Stockholm',
-            vatRate: 25,
-          },
-        })
-
-        return NextResponse.json({
-          success: true,
-          message: 'Team settings were missing and have been created',
-          team: { id: team.id, name: team.name },
-        })
-      }
-
-      return NextResponse.json({
-        success: true,
-        message: 'Account is already set up correctly',
-        team: { id: team.id, name: team.name },
-      })
-    }
-
-    // Create new team for user
-    const slug = userEmail.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, '-')
-
-    const team = await prisma.team.create({
-      data: {
-        name: `${userName}'s Team`,
-        slug: `${slug}-${Date.now()}`,
-        members: {
-          create: {
-            userId: user.id,
-            role: 'OWNER',
-          },
-        },
-        settings: {
-          create: {
-            defaultCurrency: 'SEK',
-            timezone: 'Europe/Stockholm',
-            vatRate: 25,
-          },
-        },
-      },
-    })
-
-    return NextResponse.json({
-      success: true,
-      message: 'Team created successfully',
-      team: { id: team.id, name: team.name },
-    })
+    const member = await ensureUserTeam(session.user.id)
+    const team = await prisma.team.findUniqueOrThrow({ where: { id: member.teamId }, select: { id: true, name: true } })
+    return NextResponse.json({ success: true, message: 'Account is set up correctly', team })
   } catch (error) {
     console.error('Repair error:', error)
     return NextResponse.json(

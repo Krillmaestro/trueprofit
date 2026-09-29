@@ -1,4 +1,5 @@
-const SHOPIFY_API_VERSION = '2024-01'
+import { fetchIntegration } from '@/lib/integration-http'
+import { SHOPIFY_API_VERSION, normalizeShopDomain } from './domain'
 
 export interface ShopifyClientConfig {
   shopDomain: string
@@ -17,9 +18,11 @@ export class ShopifyClient {
   private baseUrl: string
 
   constructor(config: ShopifyClientConfig) {
-    this.shopDomain = config.shopDomain
+    const domain = normalizeShopDomain(config.shopDomain)
+    if (!domain) throw new Error('Invalid Shopify domain')
+    this.shopDomain = domain
     this.accessToken = config.accessToken
-    this.baseUrl = `https://${config.shopDomain}/admin/api/${SHOPIFY_API_VERSION}`
+    this.baseUrl = `https://${this.shopDomain}/admin/api/${SHOPIFY_API_VERSION}`
   }
 
   private async request<T>(
@@ -28,7 +31,8 @@ export class ShopifyClient {
   ): Promise<T> {
     const url = `${this.baseUrl}${endpoint}`
 
-    const response = await fetch(url, {
+    const send = !options.method || options.method === 'GET' ? fetchIntegration : fetch
+    const response = await send(url, {
       ...options,
       headers: {
         'Content-Type': 'application/json',
@@ -70,7 +74,8 @@ export class ShopifyClient {
   ): Promise<PaginatedResponse<T>> {
     const url = `${this.baseUrl}${endpoint}`
 
-    const response = await fetch(url, {
+    const send = !options.method || options.method === 'GET' ? fetchIntegration : fetch
+    const response = await send(url, {
       ...options,
       headers: {
         'Content-Type': 'application/json',
@@ -123,6 +128,7 @@ export class ShopifyClient {
     status?: string
     created_at_min?: string
     created_at_max?: string
+    updated_at_min?: string
     financial_status?: string
   }): Promise<PaginatedResponse<{ orders: ShopifyOrder[] }>> {
     const searchParams = new URLSearchParams()
@@ -137,6 +143,7 @@ export class ShopifyClient {
       if (params?.status) searchParams.set('status', params.status)
       if (params?.created_at_min) searchParams.set('created_at_min', params.created_at_min)
       if (params?.created_at_max) searchParams.set('created_at_max', params.created_at_max)
+      if (params?.updated_at_min) searchParams.set('updated_at_min', params.updated_at_min)
       if (params?.financial_status) searchParams.set('financial_status', params.financial_status)
     }
 

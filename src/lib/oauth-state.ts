@@ -1,134 +1,47 @@
-/**
- * OAuth State Token Management
- *
- * Provides secure state token generation and validation for OAuth flows.
- * Prevents CSRF attacks by ensuring the state parameter in callbacks
- * matches what was originally sent.
- *
- * Uses in-memory storage with automatic expiration.
- * For production at scale, consider using Redis or database storage.
- */
-
 import crypto from 'crypto'
+import { prisma } from './prisma'
 
-interface StateEntry {
-  userId: string
-  createdAt: number
-  metadata?: Record<string, string>
-}
+const PREFIX = 'integration-oauth:'
+const TTL_MS = 10 * 60 * 1000
+const hash = (token: string) => crypto.createHash('sha256').update(token).digest('hex')
 
-// In-memory store for state tokens
-// Key: state token, Value: StateEntry
-const stateStore = new Map<string, StateEntry>()
-
-// State tokens expire after 10 minutes
-const STATE_TOKEN_TTL_MS = 10 * 60 * 1000
-
-// Cleanup interval
-let cleanupInterval: NodeJS.Timeout | null = null
-
-function startCleanup() {
-  if (cleanupInterval) return
-
-  cleanupInterval = setInterval(() => {
-    const now = Date.now()
-    for (const [token, entry] of stateStore.entries()) {
-      if (now - entry.createdAt > STATE_TOKEN_TTL_MS) {
-        stateStore.delete(token)
-      }
-    }
-  }, 60 * 1000) // Run every minute
-
-  if (cleanupInterval.unref) {
-    cleanupInterval.unref()
-  }
-}
-
-startCleanup()
-
-/**
- * Generate a new OAuth state token and store it
- * @param userId - The user ID initiating the OAuth flow
- * @param metadata - Optional metadata to store with the token
- * @returns The generated state token
- */
-export function generateStateToken(
-  userId: string,
-  metadata?: Record<string, string>
-): string {
+// Shared, durable storage lets callbacks survive restarts and reach any replica.
+// Reuse the existing verification-token table; never store the raw nonce.
+export async function generateStateToken(userId: string, metadata: Record<string, string>): Promise<string> {
   const token = crypto.randomBytes(32).toString('hex')
-
-  stateStore.set(token, {
-    userId,
-    createdAt: Date.now(),
-    metadata,
+  await prisma.verificationToken.deleteMany({
+    where: { identifier: { startsWith: PREFIX }, expires: { lt: new Date() } },
   })
-
+  await prisma.verificationToken.create({
+    data: {
+      token: hash(token),
+      identifier: PREFIX + JSON.stringify({ userId, metadata }),
+      expires: new Date(Date.now() + TTL_MS),
+    },
+  })
   return token
 }
 
-/**
- * Validate and consume an OAuth state token
- * @param token - The state token to validate
- * @param userId - The expected user ID
- * @returns The stored metadata if valid, null if invalid
- */
-export function validateStateToken(
+export async function validateStateToken(
   token: string,
-  userId: string
-): { valid: true; metadata?: Record<string, string> } | { valid: false; error: string } {
-  if (!token) {
-    return { valid: false, error: 'Missing state token' }
+  userId: string,
+  expected: Record<string, string>
+): Promise<{ valid: true; metadata: Record<string, string> } | { valid: false; error: string }> {
+  const invalid = { valid: false as const, error: 'Invalid or expired state token' }
+  if (!/^[a-f0-9]{64}$/.test(token)) return invalid
+  const entry = await prisma.verificationToken.findUnique({ where: { token: hash(token) } })
+  if (!entry || !entry.identifier.startsWith(PREFIX) || entry.expires <= new Date()) return invalid
+  let payload: { userId: string; metadata: Record<string, string> }
+  try {
+    payload = JSON.parse(entry.identifier.slice(PREFIX.length))
+  } catch {
+    return invalid
   }
-
-  const entry = stateStore.get(token)
-
-  if (!entry) {
-    return { valid: false, error: 'Invalid or expired state token' }
-  }
-
-  // Check if token has expired
-  if (Date.now() - entry.createdAt > STATE_TOKEN_TTL_MS) {
-    stateStore.delete(token)
-    return { valid: false, error: 'State token has expired' }
-  }
-
-  // Verify user ID matches
-  if (entry.userId !== userId) {
-    return { valid: false, error: 'State token user mismatch' }
-  }
-
-  // Consume the token (one-time use)
-  stateStore.delete(token)
-
-  return { valid: true, metadata: entry.metadata }
-}
-
-/**
- * Check if a state token exists (without consuming it)
- * Useful for debugging
- */
-export function hasStateToken(token: string): boolean {
-  return stateStore.has(token)
-}
-
-/**
- * Get statistics about stored state tokens
- * Useful for monitoring
- */
-export function getStateTokenStats(): { count: number; oldestAge: number } {
-  const now = Date.now()
-  let oldestAge = 0
-
-  for (const entry of stateStore.values()) {
-    const age = now - entry.createdAt
-    if (age > oldestAge) {
-      oldestAge = age
-    }
-  }
-
-  return {
-    count: stateStore.size,
-    oldestAge: Math.round(oldestAge / 1000), // in seconds
-  }
+  if (payload.userId !== userId || !payload.metadata ||
+      Object.entries(expected).some(([key, value]) => payload.metadata[key] !== value)) return invalid
+  // Atomic consumption prevents concurrent callbacks from replaying a nonce.
+  const consumed = await prisma.verificationToken.deleteMany({
+    where: { token: entry.token, identifier: entry.identifier, expires: { gt: new Date() } },
+  })
+  return consumed.count === 1 ? { valid: true, metadata: payload.metadata } : invalid
 }

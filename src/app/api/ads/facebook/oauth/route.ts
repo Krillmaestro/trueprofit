@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { ensureUserTeam } from '@/lib/user-team'
 import { encrypt } from '@/lib/encryption'
 import { generateStateToken, validateStateToken } from '@/lib/oauth-state'
-import { FacebookAdsClient } from '@/services/ads/facebook'
+import { FacebookAdsClient, FACEBOOK_API_VERSION } from '@/services/ads/facebook'
 
 const FACEBOOK_APP_ID = process.env.FACEBOOK_APP_ID!
 const FACEBOOK_APP_SECRET = process.env.FACEBOOK_APP_SECRET!
@@ -28,22 +29,25 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(new URL('/ads?error=facebook_oauth_denied', APP_URL))
   }
 
+  if (!FACEBOOK_APP_ID || !FACEBOOK_APP_SECRET) {
+    return NextResponse.redirect(new URL('/ads?error=facebook_not_configured', APP_URL))
+  }
+
   // Step 1: Initiate OAuth flow
   if (!code) {
     const redirectUri = `${APP_URL}/api/ads/facebook/oauth`
     // Note: read_insights is NOT valid for Facebook Login - it's for Pages
-    // For Ads API we only need ads_read and ads_management
+    // Analytics needs read access, never campaign mutation permissions.
     const scopes = [
       'ads_read',           // Read ad performance data
-      'ads_management',     // Create, manage, delete campaigns
       'business_management', // Access Business Manager accounts
     ].join(',')
 
     // Generate and store a secure state token for CSRF protection
-    const stateToken = generateStateToken(session.user.id, { provider: 'facebook' })
+    const stateToken = await generateStateToken(session.user.id, { provider: 'facebook' })
 
     // Use latest Graph API version
-    const authUrl = new URL('https://www.facebook.com/v21.0/dialog/oauth')
+    const authUrl = new URL(`https://www.facebook.com/${FACEBOOK_API_VERSION}/dialog/oauth`)
     authUrl.searchParams.set('client_id', FACEBOOK_APP_ID)
     authUrl.searchParams.set('redirect_uri', redirectUri)
     authUrl.searchParams.set('scope', scopes)
@@ -60,7 +64,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(new URL('/ads?error=invalid_state', APP_URL))
   }
 
-  const stateValidation = validateStateToken(state, session.user.id)
+  const stateValidation = await validateStateToken(state, session.user.id, { provider: 'facebook' })
   if (!stateValidation.valid) {
     console.error('Invalid state token:', stateValidation.error)
     return NextResponse.redirect(new URL('/ads?error=invalid_state', APP_URL))
@@ -70,7 +74,7 @@ export async function GET(request: NextRequest) {
     const redirectUri = `${APP_URL}/api/ads/facebook/oauth`
 
     // Exchange code for short-lived token
-    const tokenUrl = new URL('https://graph.facebook.com/v21.0/oauth/access_token')
+    const tokenUrl = new URL(`https://graph.facebook.com/${FACEBOOK_API_VERSION}/oauth/access_token`)
     tokenUrl.searchParams.set('client_id', FACEBOOK_APP_ID)
     tokenUrl.searchParams.set('client_secret', FACEBOOK_APP_SECRET)
     tokenUrl.searchParams.set('redirect_uri', redirectUri)
@@ -97,49 +101,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(new URL('/ads?error=no_ad_accounts', APP_URL))
     }
 
-    // Get user's team, or create one if it doesn't exist
-    let teamMember = await prisma.teamMember.findFirst({
-      where: { userId: session.user.id },
-      include: { team: true },
-    })
-
-    if (!teamMember) {
-      // Auto-create a team for the user
-      const user = await prisma.user.findUnique({
-        where: { id: session.user.id },
-      })
-
-      const teamSlug = `team-${session.user.id.slice(0, 8)}-${Date.now()}`
-      const team = await prisma.team.create({
-        data: {
-          name: user?.name ? `${user.name}'s Team` : 'My Team',
-          slug: teamSlug,
-          members: {
-            create: {
-              userId: session.user.id,
-              role: 'OWNER',
-            },
-          },
-          settings: {
-            create: {
-              defaultCurrency: 'SEK',
-              timezone: 'Europe/Stockholm',
-              vatRate: 25,
-            },
-          },
-        },
-      })
-
-      teamMember = await prisma.teamMember.findFirst({
-        where: { userId: session.user.id, teamId: team.id },
-        include: { team: true },
-      })
-
-      if (!teamMember) {
-        console.error('Failed to create team for user')
-        return NextResponse.redirect(new URL('/ads?error=team_creation_failed', APP_URL))
-      }
-    }
+    const teamMember = await ensureUserTeam(session.user.id)
 
     // Calculate token expiry (Facebook long-lived tokens last ~60 days)
     // Default to 60 days if expires_in is not provided

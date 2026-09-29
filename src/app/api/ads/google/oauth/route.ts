@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { ensureUserTeam } from '@/lib/user-team'
 import { encrypt } from '@/lib/encryption'
 import { generateStateToken, validateStateToken } from '@/lib/oauth-state'
 import { GoogleAdsClient, exchangeGoogleAuthCode } from '@/services/ads/google'
@@ -49,7 +50,7 @@ export async function GET(request: NextRequest) {
     ].join(' ')
 
     // Generate and store a secure state token for CSRF protection
-    const stateToken = generateStateToken(session.user.id, { provider: 'google' })
+    const stateToken = await generateStateToken(session.user.id, { provider: 'google' })
 
     const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth')
     authUrl.searchParams.set('client_id', GOOGLE_ADS_CLIENT_ID)
@@ -70,7 +71,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(new URL('/ads?error=invalid_state', APP_URL))
   }
 
-  const stateValidation = validateStateToken(state, session.user.id)
+  const stateValidation = await validateStateToken(state, session.user.id, { provider: 'google' })
   if (!stateValidation.valid) {
     console.error('Invalid state token:', stateValidation.error)
     return NextResponse.redirect(new URL('/ads?error=invalid_state', APP_URL))
@@ -87,65 +88,25 @@ export async function GET(request: NextRequest) {
     )
 
     // Get accessible customers
-    const client = new GoogleAdsClient(tokens.access_token, GOOGLE_ADS_DEVELOPER_TOKEN)
+    const client = new GoogleAdsClient(tokens.access_token, GOOGLE_ADS_DEVELOPER_TOKEN, process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID)
     const customerIds = await client.getAccessibleCustomers()
 
     if (customerIds.length === 0) {
       return NextResponse.redirect(new URL('/ads?error=no_google_accounts', APP_URL))
     }
 
-    // Get user's team, or create one if it doesn't exist
-    let teamMember = await prisma.teamMember.findFirst({
-      where: { userId: session.user.id },
-      include: { team: true },
-    })
-
-    if (!teamMember) {
-      // Auto-create a team for the user
-      const user = await prisma.user.findUnique({
-        where: { id: session.user.id },
-      })
-
-      const teamSlug = `team-${session.user.id.slice(0, 8)}-${Date.now()}`
-      const team = await prisma.team.create({
-        data: {
-          name: user?.name ? `${user.name}'s Team` : 'My Team',
-          slug: teamSlug,
-          members: {
-            create: {
-              userId: session.user.id,
-              role: 'OWNER',
-            },
-          },
-          settings: {
-            create: {
-              defaultCurrency: 'SEK',
-              timezone: 'Europe/Stockholm',
-              vatRate: 25,
-            },
-          },
-        },
-      })
-
-      teamMember = await prisma.teamMember.findFirst({
-        where: { userId: session.user.id, teamId: team.id },
-        include: { team: true },
-      })
-
-      if (!teamMember) {
-        console.error('Failed to create team for user')
-        return NextResponse.redirect(new URL('/ads?error=team_creation_failed', APP_URL))
-      }
-    }
+    const teamMember = await ensureUserTeam(session.user.id)
 
     // Calculate token expiry
     const tokenExpiresAt = new Date()
     tokenExpiresAt.setSeconds(tokenExpiresAt.getSeconds() + tokens.expires_in)
 
+    let connectedCount = 0
     // Get info for each customer and save
     for (const customerId of customerIds) {
       try {
         const customerInfo = await client.getCustomerInfo(customerId)
+        if (customerInfo.manager) continue
 
         await prisma.adAccount.upsert({
           where: {
@@ -169,19 +130,22 @@ export async function GET(request: NextRequest) {
           update: {
             accountName: customerInfo.descriptiveName,
             accessTokenEncrypted: encrypt(tokens.access_token),
-            refreshTokenEncrypted: tokens.refresh_token ? encrypt(tokens.refresh_token) : null,
+            ...(tokens.refresh_token ? { refreshTokenEncrypted: encrypt(tokens.refresh_token) } : {}),
             tokenExpiresAt,
             currency: customerInfo.currencyCode,
             isActive: true,
           },
         })
+        connectedCount++
       } catch (err) {
         console.error(`Failed to get info for customer ${customerId}:`, err)
         // Continue with other customers
       }
     }
 
-    return NextResponse.redirect(new URL('/ads?success=google_connected', APP_URL))
+    if (connectedCount === 0) return NextResponse.redirect(new URL('/ads?error=no_google_accounts', APP_URL))
+    const result = connectedCount < customerIds.length ? '/ads?success=google_partial' : '/ads?success=google_connected'
+    return NextResponse.redirect(new URL(result, APP_URL))
   } catch (error) {
     console.error('Google Ads OAuth error:', error)
     return NextResponse.redirect(new URL('/ads?error=google_failed', APP_URL))

@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { signIn } from 'next-auth/react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
@@ -13,13 +13,24 @@ import { Separator } from '@/components/ui/separator'
 function LoginForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const callbackUrl = searchParams.get('callbackUrl') || '/'
+  const requestedCallback = searchParams.get('callbackUrl') || '/dashboard'
+  const callbackUrl = requestedCallback.startsWith('/') && !requestedCallback.startsWith('//') && !requestedCallback.includes('\\') ? requestedCallback : '/dashboard'
   const error = searchParams.get('error')
 
+  const [embedded, setEmbedded] = useState(false)
+  useEffect(() => { setEmbedded(window.self !== window.top) }, [])
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
-  const [errorMessage, setErrorMessage] = useState(error || '')
+  const messages: Record<string, string> = {
+    OAuthAccountNotLinked: 'This email already has an account. Sign in with the method you originally used.',
+    OAuthCallback: 'Google sign-in could not be completed. Open TrueProfit in its own tab and try again.',
+    OAuthSignin: 'Google sign-in is unavailable. Please try again or use your existing email login.',
+    CredentialsSignin: 'Invalid email or password.',
+    AccessDenied: 'Sign-in was denied. Check that you selected the correct Google account.',
+    Configuration: 'Sign-in is not configured correctly. Please contact the administrator.',
+  }
+  const [errorMessage, setErrorMessage] = useState(error ? messages[error] || 'Sign-in failed. Please try again.' : '')
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -36,8 +47,11 @@ function LoginForm() {
 
       if (result?.error) {
         setErrorMessage('Invalid email or password')
-      } else {
+      } else if (result?.ok) {
         router.push(callbackUrl)
+        router.refresh()
+      } else {
+        setErrorMessage('Sign-in did not complete. Please try again.')
       }
     } catch {
       setErrorMessage('Something went wrong')
@@ -61,8 +75,9 @@ function LoginForm() {
       </CardHeader>
 
       <CardContent className="space-y-4">
+        {embedded && <p className="text-sm text-slate-600">For Google sign-in, <a className="text-blue-600 underline" href="/login" target="_blank" rel="noopener noreferrer">open TrueProfit in its own tab</a>.</p>}
         {errorMessage && (
-          <div className="bg-red-50 text-red-600 text-sm p-3 rounded-lg" role="alert" aria-live="polite">
+          <div id="login-error" className="bg-red-50 text-red-600 text-sm p-3 rounded-lg" role="alert" aria-live="polite">
             {errorMessage}
           </div>
         )}

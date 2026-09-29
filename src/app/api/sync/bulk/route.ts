@@ -136,6 +136,14 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Missing syncId' }, { status: 400 })
   }
 
+  const teamId = syncId.slice(0, syncId.lastIndexOf('-bulk-'))
+  const membership = await prisma.teamMember.findFirst({
+    where: { teamId, userId: session.user.id }, select: { teamId: true },
+  })
+  if (!syncId.includes('-bulk-') || !membership) {
+    return NextResponse.json({ error: 'Sync not found or expired' }, { status: 404 })
+  }
+
   const status = activeSyncs.get(syncId)
 
   if (!status) {

@@ -1,3 +1,4 @@
+import { fetchIntegration } from '@/lib/integration-http'
 /**
  * Google Sheets Service for Google Ads Data
  *
@@ -51,7 +52,7 @@ export class GoogleSheetsAdsClient {
     const range = `${sheetName}!A:I`
     const url = `${this.baseUrl}/${this.spreadsheetId}/values/${encodeURIComponent(range)}`
 
-    const response = await fetch(url, {
+    const response = await fetchIntegration(url, {
       headers: {
         Authorization: `Bearer ${this.accessToken}`,
         'Content-Type': 'application/json',
@@ -205,7 +206,7 @@ export class GoogleSheetsAdsClient {
     try {
       const url = `${this.baseUrl}/${this.spreadsheetId}`
 
-      const response = await fetch(url, {
+      const response = await fetchIntegration(url, {
         headers: {
           Authorization: `Bearer ${this.accessToken}`,
           'Content-Type': 'application/json',

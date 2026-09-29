@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { ensureUserTeam } from '@/lib/user-team'
 import { encrypt } from '@/lib/encryption'
 import { oauthRateLimiter, getRateLimitKey } from '@/lib/rate-limit'
 import { generateStateToken, validateStateToken } from '@/lib/oauth-state'
@@ -62,7 +63,7 @@ export async function GET(request: NextRequest) {
     ].join(' ')
 
     // Generate state token for CSRF protection
-    const stateToken = generateStateToken(session.user.id, { provider: 'google_sheets' })
+    const stateToken = await generateStateToken(session.user.id, { provider: 'google_sheets' })
 
     const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth')
     authUrl.searchParams.set('client_id', GOOGLE_CLIENT_ID)
@@ -82,7 +83,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(new URL('/ads?error=invalid_state', APP_URL))
   }
 
-  const stateValidation = validateStateToken(state, session.user.id)
+  const stateValidation = await validateStateToken(state, session.user.id, { provider: 'google_sheets' })
   if (!stateValidation.valid) {
     console.error('Invalid state token:', stateValidation.error)
     return NextResponse.redirect(new URL('/ads?error=invalid_state', APP_URL))
@@ -111,15 +112,7 @@ export async function GET(request: NextRequest) {
 
     const tokens = await tokenResponse.json()
 
-    // Get user's team
-    const teamMember = await prisma.teamMember.findFirst({
-      where: { userId: session.user.id },
-      include: { team: true },
-    })
-
-    if (!teamMember) {
-      return NextResponse.redirect(new URL('/ads?error=no_team', APP_URL))
-    }
+    const teamMember = await ensureUserTeam(session.user.id)
 
     // Calculate token expiry
     const tokenExpiresAt = new Date()

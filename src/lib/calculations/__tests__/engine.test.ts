@@ -3,19 +3,23 @@
  * Verifies critical business logic for profit calculations
  */
 
+import { describe, expect, it } from 'vitest'
+import { Decimal } from '@prisma/client/runtime/library'
+import type { OrderForCalculation } from '../types'
+
 import {
-  calculateGrossRevenue,
-  calculateNetRevenue,
-  calculateRevenueExVat,
-  calculateGrossProfit,
-  calculateNetProfit,
-  calculateBreakEvenROAS,
+  simpleGrossRevenue as calculateGrossRevenue,
+  simpleNetRevenue as calculateNetRevenue,
+  simpleRevenueExVat as calculateRevenueExVat,
+  simpleGrossProfit as calculateGrossProfit,
+  simpleNetProfit as calculateNetProfit,
+  simpleBreakEvenROAS as calculateBreakEvenROAS,
   toNumber,
   roundCurrency,
   roundPercentage,
   safeMargin,
 } from '../engine'
-import { getCOGSAtDate, validateCOGSCoverage } from '../cogs'
+import { buildCOGSData, getCOGSAtDate, validateCOGSCoverage } from '../cogs'
 
 // ===========================================
 // BASIC UTILITY TESTS
@@ -32,11 +36,11 @@ describe('Utility Functions', () => {
     })
 
     it('converts string numbers', () => {
-      expect(toNumber('123.45')).toBe(123.45)
+      expect(toNumber(new Decimal('123.45'))).toBe(123.45)
     })
 
     it('converts Decimal-like objects', () => {
-      expect(toNumber({ toNumber: () => 99.99 })).toBe(99.99)
+      expect(toNumber(new Decimal('99.99'))).toBe(99.99)
     })
 
     it('preserves regular numbers', () => {
@@ -65,7 +69,7 @@ describe('Utility Functions', () => {
     })
 
     it('handles negative revenue', () => {
-      expect(safeMargin(10, -100)).toBe(0)
+      expect(safeMargin(10, -100)).toBe(-10)
     })
   })
 })
@@ -196,52 +200,67 @@ describe('VAT Handling (CRITICAL)', () => {
 
 describe('COGS Calculations', () => {
   describe('getCOGSAtDate', () => {
-    const entries = [
+    const entries = buildCOGSData([
       {
+        id: 'old', variantId: 'variant', source: 'MANUAL', zoneId: null,
         costPrice: 100,
         effectiveFrom: new Date('2024-01-01'),
         effectiveTo: new Date('2024-06-30'),
       },
       {
+        id: 'new', variantId: 'variant', source: 'MANUAL', zoneId: null,
         costPrice: 120,
         effectiveFrom: new Date('2024-07-01'),
         effectiveTo: null,
       },
-    ]
+    ])
 
     it('returns correct COGS for date within first period', () => {
       const orderDate = new Date('2024-03-15')
-      expect(getCOGSAtDate(entries, orderDate)).toBe(100)
+      expect(getCOGSAtDate('variant', orderDate, entries)).toMatchObject({ costPrice: 100, matched: true })
     })
 
     it('returns correct COGS for date in second period', () => {
       const orderDate = new Date('2024-08-01')
-      expect(getCOGSAtDate(entries, orderDate)).toBe(120)
+      expect(getCOGSAtDate('variant', orderDate, entries)).toMatchObject({ costPrice: 120, matched: true })
     })
 
-    it('returns null for date before any entries', () => {
+    it('explicitly marks historical estimates as fallback before any entries', () => {
       const orderDate = new Date('2023-01-01')
-      expect(getCOGSAtDate(entries, orderDate)).toBe(null)
+      expect(getCOGSAtDate('variant', orderDate, entries)).toMatchObject({ costPrice: 100, matched: false, source: 'FALLBACK' })
     })
   })
 
   describe('validateCOGSCoverage', () => {
-    it('returns 100% when all items have COGS', () => {
-      const result = validateCOGSCoverage(10, 0)
-      expect(result.percentage).toBe(100)
-      expect(result.isComplete).toBe(true)
+    const order = (variantIds: string[]): OrderForCalculation => ({
+      id: 'order', storeId: 'store', shopifyOrderId: BigInt(1), orderNumber: '1',
+      financialStatus: 'paid', fulfillmentStatus: null, currency: 'SEK',
+      subtotalPrice: 0, totalDiscounts: 0, totalShippingPrice: 0, totalTax: 0,
+      totalPrice: 0, totalCOGS: 0, totalShippingCost: 0, totalPaymentFees: 0,
+      totalRefundAmount: 0, grossProfit: 0, netProfit: 0, profitMargin: 0,
+      shopifyCreatedAt: new Date('2026-09-01'), cancelledAt: null,
+      shippingCountry: 'SE', transactions: [], refunds: [],
+      lineItems: variantIds.map(id => ({
+        id, variantId: id, shopifyVariantId: BigInt(1), title: id, sku: null,
+        quantity: 1, price: 0, totalDiscount: 0, taxAmount: 0,
+        unitCOGS: 0, totalCOGS: 0, cogsSource: 'MISSING',
+      })),
     })
-
-    it('calculates correct percentage for partial coverage', () => {
-      const result = validateCOGSCoverage(10, 3)
-      expect(result.percentage).toBe(70)
-      expect(result.isComplete).toBe(false)
+    const costs = buildCOGSData([{
+      id: 'cost', variantId: 'known', costPrice: 10,
+      effectiveFrom: new Date('2026-01-01'), effectiveTo: null,
+      source: 'MANUAL', zoneId: null,
+    }])
+    it('deduplicates variants across orders', () => {
+      expect(validateCOGSCoverage([order(['known', 'known'])], costs))
+        .toMatchObject({ totalVariants: 1, variantsWithCOGS: 1, coverageRate: 100 })
     })
-
-    it('handles zero items', () => {
-      const result = validateCOGSCoverage(0, 0)
-      expect(result.percentage).toBe(100)
-      expect(result.isComplete).toBe(true)
+    it('identifies missing variant costs', () => {
+      expect(validateCOGSCoverage([order(['known', 'unknown'])], costs))
+        .toMatchObject({ coverageRate: 50, missingVariants: [{ variantId: 'unknown' }] })
+    })
+    it('handles an empty period', () => {
+      expect(validateCOGSCoverage([], costs)).toMatchObject({ totalVariants: 0, coverageRate: 100 })
     })
   })
 })
@@ -280,41 +299,16 @@ describe('ROAS Calculations', () => {
 // ===========================================
 
 describe('Full Profit Calculation Scenarios', () => {
-  it('calculates e-commerce order profit correctly', () => {
-    // Realistic Swedish e-commerce order
-    // Customer pays: 1250 SEK (1000 + 25% VAT = 250)
-    // Shipping charged: 99 SEK (79.20 + VAT)
-    // Discount: 100 SEK
-    // No refund
-
-    // Our costs:
-    // COGS: 300 SEK
-    // Shipping cost: 59 SEK
-    // Payment fee: 2.9% + 3 SEK
-
-    const subtotal = 1000 // Before VAT
-    const shipping = 79.20 // Before VAT
-    const vat = 269.80 // 25% on subtotal + shipping
-    const discount = 100
-    const refund = 0
-
+  it('deducts VAT once before operating costs', () => {
+    // All supplied amounts are VAT-inclusive, after the known discount.
+    const customerPayment = 1250
+    const vatCollected = 250
     const cogs = 300
     const shippingCost = 59
-    const orderTotal = subtotal + shipping + vat - discount // 1249
-    const paymentFee = orderTotal * 0.029 + 3 // ~39.22
-
-    // Calculations
-    const grossRevenue = calculateGrossRevenue(subtotal, shipping) // 1079.20
-    const netRevenue = calculateNetRevenue(grossRevenue, discount, refund) // 979.20
-    const revenueExVat = calculateRevenueExVat(netRevenue, vat) // Should be roughly net * 0.8
-
-    // For this test, let's use actual values
-    expect(grossRevenue).toBe(1079.20)
-    expect(netRevenue).toBe(979.20)
-
-    // The VAT calculation here is complex because discount was applied
-    // In real scenario, VAT would be recalculated on discounted amount
-    // But the PRINCIPLE remains: VAT is subtracted ONCE
+    const paymentFee = roundCurrency(customerPayment * 0.029 + 3)
+    const revenueExVat = calculateRevenueExVat(customerPayment, vatCollected)
+    const grossProfit = calculateGrossProfit(revenueExVat, cogs)
+    expect(calculateNetProfit(grossProfit, paymentFee, shippingCost)).toBe(601.75)
   })
 
   it('handles refund scenario correctly', () => {

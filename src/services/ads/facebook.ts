@@ -1,7 +1,9 @@
 // Facebook Marketing API Client
 // Documentation: https://developers.facebook.com/docs/marketing-api
 
-const FACEBOOK_API_VERSION = 'v21.0'
+import { fetchIntegration } from '@/lib/integration-http'
+
+export const FACEBOOK_API_VERSION = process.env.FACEBOOK_API_VERSION || 'v21.0'
 const FACEBOOK_GRAPH_URL = `https://graph.facebook.com/${FACEBOOK_API_VERSION}`
 
 export interface FacebookAdAccount {
@@ -43,13 +45,12 @@ export class FacebookAdsClient {
 
   private async request<T>(endpoint: string, params: Record<string, string> = {}): Promise<T> {
     const url = new URL(`${FACEBOOK_GRAPH_URL}${endpoint}`)
-    url.searchParams.set('access_token', this.accessToken)
 
     for (const [key, value] of Object.entries(params)) {
       url.searchParams.set(key, value)
     }
 
-    const response = await fetch(url.toString())
+    const response = await fetchIntegration(url.toString(), { headers: { Authorization: `Bearer ${this.accessToken}` } })
 
     if (!response.ok) {
       const error = await response.json()
@@ -59,19 +60,36 @@ export class FacebookAdsClient {
     return response.json()
   }
 
+  private async allPages<T>(endpoint: string, params: Record<string, string>): Promise<T[]> {
+    const rows: T[] = []
+    const cursors = new Set<string>()
+    let after: string | undefined
+    do {
+      const page = await this.request<{ data: T[]; paging?: { next?: string; cursors?: { after?: string } } }>(
+        endpoint, { ...params, ...(after ? { after } : {}) }
+      )
+      rows.push(...page.data)
+      if (!page.paging?.next) break
+      after = page.paging.cursors?.after
+      if (!after || cursors.has(after)) throw new Error('Facebook pagination did not advance')
+      cursors.add(after)
+    } while (after)
+    return rows
+  }
+
   async getAdAccounts(): Promise<FacebookAdAccount[]> {
-    const response = await this.request<{ data: FacebookAdAccount[] }>('/me/adaccounts', {
+    const response = await this.allPages<FacebookAdAccount>('/me/adaccounts', {
       fields: 'id,name,account_id,currency,timezone_name',
     })
-    return response.data
+    return response
   }
 
   async getCampaigns(adAccountId: string): Promise<FacebookCampaign[]> {
-    const response = await this.request<{ data: FacebookCampaign[] }>(`/act_${adAccountId}/campaigns`, {
+    const response = await this.allPages<FacebookCampaign>(`/act_${adAccountId}/campaigns`, {
       fields: 'id,name,status,objective',
       limit: '500',
     })
-    return response.data
+    return response
   }
 
   async getInsights(
@@ -96,7 +114,7 @@ export class FacebookAdsClient {
       fields.push('campaign_id', 'campaign_name', 'adset_id', 'adset_name')
     }
 
-    const response = await this.request<{ data: FacebookInsight[] }>(`/act_${adAccountId}/insights`, {
+    const response = await this.allPages<FacebookInsight>(`/act_${adAccountId}/insights`, {
       fields: fields.join(','),
       time_range: JSON.stringify({ since: dateFrom, until: dateTo }),
       level,
@@ -104,7 +122,7 @@ export class FacebookAdsClient {
       limit: '500',
     })
 
-    return response.data
+    return response
   }
 
   async refreshLongLivedToken(appId: string, appSecret: string): Promise<{ access_token: string; expires_in: number }> {

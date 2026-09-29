@@ -2,9 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { ensureUserTeam } from '@/lib/user-team'
 import { encrypt } from '@/lib/encryption'
 import { generateStateToken, validateStateToken } from '@/lib/oauth-state'
 import crypto from 'crypto'
+import { normalizeShopDomain, SHOPIFY_API_VERSION } from '@/services/shopify/domain'
 
 const SHOPIFY_API_KEY = process.env.SHOPIFY_API_KEY || ''
 const SHOPIFY_API_SECRET = process.env.SHOPIFY_API_SECRET || ''
@@ -31,6 +33,8 @@ export async function GET(request: NextRequest) {
   const code = searchParams.get('code')
   const state = searchParams.get('state')
   const hmac = searchParams.get('hmac')
+  const shopDomain = shop ? normalizeShopDomain(shop) : null
+  if (!shopDomain) return NextResponse.redirect(new URL('/settings/stores?error=invalid_shop', APP_URL))
 
   // Check if Shopify is configured
   if (!SHOPIFY_API_KEY || !SHOPIFY_API_SECRET) {
@@ -41,10 +45,7 @@ export async function GET(request: NextRequest) {
   // Step 1: Initial OAuth request - redirect to Shopify
   if (shop && !code) {
     // Generate and store a secure state token for CSRF protection
-    const stateToken = generateStateToken(session.user.id, { shop })
-
-    // Normalize shop domain - ensure it ends with .myshopify.com
-    const shopDomain = shop.includes('.myshopify.com') ? shop : `${shop}.myshopify.com`
+    const stateToken = await generateStateToken(session.user.id, { provider: 'shopify', shop: shopDomain })
 
     const redirectUri = `${APP_URL}/api/shopify/oauth`
     const authUrl = `https://${shopDomain}/admin/oauth/authorize?` +
@@ -64,7 +65,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(new URL('/settings/stores?error=invalid_state', APP_URL))
     }
 
-    const stateValidation = validateStateToken(state, session.user.id)
+    const stateValidation = await validateStateToken(state, session.user.id, { provider: 'shopify', shop: shopDomain })
     if (!stateValidation.valid) {
       console.error('Invalid state token:', stateValidation.error)
       return NextResponse.redirect(new URL('/settings/stores?error=invalid_state', APP_URL))
@@ -81,12 +82,11 @@ export async function GET(request: NextRequest) {
       .update(message)
       .digest('hex')
 
-    if (generatedHmac !== hmac) {
+    if (!/^[a-f0-9]{64}$/i.test(hmac) || !crypto.timingSafeEqual(Buffer.from(generatedHmac, 'hex'), Buffer.from(hmac, 'hex'))) {
       return NextResponse.json({ error: 'Invalid HMAC' }, { status: 401 })
     }
 
     // Exchange code for access token
-    const shopDomain = shop.includes('.myshopify.com') ? shop : `${shop}.myshopify.com`
 
     let tokenResponse
     let access_token: string
@@ -122,7 +122,7 @@ export async function GET(request: NextRequest) {
     // Get shop info
     let shopInfo
     try {
-      const shopResponse = await fetch(`https://${shopDomain}/admin/api/2024-10/shop.json`, {
+      const shopResponse = await fetch(`https://${shopDomain}/admin/api/${SHOPIFY_API_VERSION}/shop.json`, {
         headers: {
           'X-Shopify-Access-Token': access_token,
         },
@@ -140,41 +140,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(new URL('/settings/stores?error=connection_failed', APP_URL))
     }
 
-    // Get user's team, or create one if it doesn't exist
-    let teamMember = await prisma.teamMember.findFirst({
-      where: { userId: session.user.id },
-      include: { team: true },
-    })
+    const teamMember = await ensureUserTeam(session.user.id)
 
-    if (!teamMember) {
-      // Auto-create a team for the user
-      const user = await prisma.user.findUnique({
-        where: { id: session.user.id },
-      })
-
-      const teamSlug = `team-${session.user.id.slice(0, 8)}-${Date.now()}`
-      const team = await prisma.team.create({
-        data: {
-          name: user?.name ? `${user.name}'s Team` : 'My Team',
-          slug: teamSlug,
-          members: {
-            create: {
-              userId: session.user.id,
-              role: 'OWNER',
-            },
-          },
-        },
-      })
-
-      teamMember = await prisma.teamMember.findFirst({
-        where: { userId: session.user.id, teamId: team.id },
-        include: { team: true },
-      })
-
-      if (!teamMember) {
-        console.error('Failed to create team for user')
-        return NextResponse.redirect(new URL('/settings/stores?error=team_creation_failed', APP_URL))
-      }
+    const existingStore = await prisma.store.findUnique({ where: { shopifyDomain: shopDomain } })
+    if (existingStore && existingStore.teamId !== teamMember.teamId) {
+      return NextResponse.redirect(new URL('/settings/stores?error=store_already_connected', APP_URL))
     }
 
     // Save or update store with encrypted access token
@@ -183,6 +153,7 @@ export async function GET(request: NextRequest) {
     await prisma.store.upsert({
       where: {
         shopifyDomain: shopDomain,
+        teamId: teamMember.teamId,
       },
       create: {
         teamId: teamMember.teamId,

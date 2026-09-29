@@ -84,7 +84,7 @@ export function generateWebhookId(
   payload: WebhookPayload
 ): string {
   const payloadId = payload.id?.toString() || crypto.randomUUID()
-  const components = [topic, shopDomain, payloadId]
+  const components = [topic, shopDomain, payloadId, JSON.stringify(payload)]
 
   return crypto
     .createHash('sha256')
@@ -111,6 +111,7 @@ export async function markWebhookProcessed(
   _status: 'PROCESSED' | 'FAILED' | 'SKIPPED',
   _errorMessage?: string
 ): Promise<void> {
+  if (_status !== 'PROCESSED') return
   // Clean up old entries if cache is too large
   if (processedWebhooks.size >= MAX_CACHE_SIZE) {
     const entries = Array.from(processedWebhooks.entries())

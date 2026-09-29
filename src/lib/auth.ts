@@ -4,6 +4,7 @@ import GoogleProvider from 'next-auth/providers/google'
 import CredentialsProvider from 'next-auth/providers/credentials'
 import bcrypt from 'bcryptjs'
 import { prisma } from './prisma'
+import { ensureUserTeam } from './user-team'
 
 // Validate environment configuration at startup
 import './config'
@@ -26,8 +27,8 @@ export const authOptions: NextAuthOptions = {
           throw new Error('Email and password are required')
         }
 
-        const user = await prisma.user.findUnique({
-          where: { email: credentials.email },
+        const user = await prisma.user.findFirst({
+          where: { email: { equals: credentials.email.trim(), mode: 'insensitive' } },
         })
 
         if (!user || !user.passwordHash) {
@@ -65,40 +66,11 @@ export const authOptions: NextAuthOptions = {
       }
       return session
     },
-    async signIn({ user, account }) {
-      // Auto-create team for new users
-      if (account?.provider === 'google' || account?.provider === 'credentials') {
-        const existingUser = await prisma.user.findUnique({
-          where: { email: user.email! },
-          include: { teamMembers: true },
-        })
-
-        // If user has no teams, create a default one
-        if (existingUser && existingUser.teamMembers.length === 0) {
-          const slug = user.email!.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, '-')
-
-          await prisma.team.create({
-            data: {
-              name: `${user.name || user.email}'s Team`,
-              slug: `${slug}-${Date.now()}`,
-              members: {
-                create: {
-                  userId: existingUser.id,
-                  role: 'OWNER',
-                },
-              },
-              settings: {
-                create: {
-                  defaultCurrency: 'SEK',
-                  timezone: 'Europe/Stockholm',
-                  vatRate: 25,
-                },
-              },
-            },
-          })
-        }
-      }
-      return true
+  },
+  events: {
+    async signIn({ user }) {
+      // The adapter has persisted the user, including on first Google login.
+      await ensureUserTeam(user.id)
     },
   },
   pages: {
@@ -114,9 +86,9 @@ export const authOptions: NextAuthOptions = {
         : 'next-auth.session-token',
       options: {
         httpOnly: true,
-        sameSite: 'none' as const,
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' as const : 'lax' as const,
         path: '/',
-        secure: true,
+        secure: process.env.NODE_ENV === 'production',
       },
     },
   },

@@ -36,7 +36,15 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  const { storeId, type, background, incremental, sinceDate } = await request.json()
+  const body = await request.json().catch(() => null)
+  if (!body || typeof body.storeId !== 'string' || !['products', 'orders', 'all'].includes(body.type)) {
+    return NextResponse.json({ error: 'Valid storeId and sync type are required' }, { status: 400 })
+  }
+  const { storeId, type, background, incremental, sinceDate } = body
+  if (sinceDate && (typeof sinceDate !== 'string' || !Number.isFinite(Date.parse(sinceDate)))) {
+    return NextResponse.json({ error: 'Invalid sinceDate' }, { status: 400 })
+  }
+  const syncStartedAt = new Date()
 
   // Get store and verify access
   const store = await prisma.store.findFirst({
@@ -80,6 +88,8 @@ export async function POST(request: NextRequest) {
     sinceDateForOrders = thirtyDaysAgo
   }
 
+  const useUpdatedAt = Boolean(incremental && store.lastSyncAt && !sinceDate)
+
   // Background sync: start the job and return immediately
   if (background) {
     const syncId = `${storeId}-${Date.now()}`
@@ -97,7 +107,7 @@ export async function POST(request: NextRequest) {
     activeSyncs.set(syncId, { status: 'running', progress: 'Starting sync...' })
 
     // Start sync in background (fire and forget)
-    runBackgroundSync(syncId, store.id, client, type, sinceDateForOrders).catch(err => {
+    runBackgroundSync(syncId, store.id, client, type, sinceDateForOrders, useUpdatedAt, syncStartedAt).catch(err => {
       console.error('Background sync error:', err)
       activeSyncs.set(syncId, {
         status: 'failed',
@@ -109,7 +119,7 @@ export async function POST(request: NextRequest) {
       success: true,
       syncId,
       message: 'Sync started in background. You can leave this page.',
-      checkStatusUrl: `/api/shopify/sync/status?syncId=${syncId}`
+      checkStatusUrl: `/api/shopify/sync?syncId=${syncId}`
     })
   }
 
@@ -125,18 +135,20 @@ export async function POST(request: NextRequest) {
     }
 
     if (type === 'orders' || type === 'all') {
-      const { orders, transactions, refunds } = await syncOrders(store.id, client, sinceDateForOrders)
+      const { orders, transactions, refunds } = await syncOrders(store.id, client, sinceDateForOrders, useUpdatedAt)
       syncedCount += orders
       syncDetails.orders = orders
       syncDetails.transactions = transactions
       syncDetails.refunds = refunds
     }
 
-    // Update last sync time
-    await prisma.store.update({
-      where: { id: store.id },
-      data: { lastSyncAt: new Date() },
-    })
+    // Product-only imports must not advance the order watermark.
+    if (type === 'orders' || type === 'all') {
+      await prisma.store.updateMany({
+        where: { id: store.id, OR: [{ lastSyncAt: null }, { lastSyncAt: { lt: syncStartedAt } }] },
+        data: { lastSyncAt: syncStartedAt },
+      })
+    }
 
     return NextResponse.json({
       success: true,
@@ -167,6 +179,13 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Missing syncId' }, { status: 400 })
   }
 
+  const storeId = syncId.slice(0, syncId.lastIndexOf('-'))
+  const store = await prisma.store.findFirst({
+    where: { id: storeId, team: { members: { some: { userId: session.user.id } } } },
+    select: { id: true },
+  })
+  if (!store) return NextResponse.json({ error: 'Sync not found' }, { status: 404 })
+
   const syncStatus = activeSyncs.get(syncId)
 
   if (!syncStatus) {
@@ -182,7 +201,9 @@ async function runBackgroundSync(
   storeId: string,
   client: ShopifyClient,
   type: string,
-  sinceDate: Date
+  sinceDate: Date,
+  useUpdatedAt: boolean,
+  syncStartedAt: Date
 ) {
   try {
     let syncedCount = 0
@@ -197,18 +218,20 @@ async function runBackgroundSync(
 
     if (type === 'orders' || type === 'all') {
       activeSyncs.set(syncId, { status: 'running', progress: 'Syncing orders...' })
-      const { orders, transactions, refunds } = await syncOrders(storeId, client, sinceDate)
+      const { orders, transactions, refunds } = await syncOrders(storeId, client, sinceDate, useUpdatedAt)
       syncedCount += orders
       syncDetails.orders = orders
       syncDetails.transactions = transactions
       syncDetails.refunds = refunds
     }
 
-    // Update last sync time
-    await prisma.store.update({
-      where: { id: storeId },
-      data: { lastSyncAt: new Date() },
-    })
+    // Product-only imports must not advance the order watermark.
+    if (type === 'orders' || type === 'all') {
+      await prisma.store.updateMany({
+        where: { id: storeId, OR: [{ lastSyncAt: null }, { lastSyncAt: { lt: syncStartedAt } }] },
+        data: { lastSyncAt: syncStartedAt },
+      })
+    }
 
     activeSyncs.set(syncId, {
       status: 'completed',
@@ -381,7 +404,7 @@ async function syncProducts(storeId: string, client: ShopifyClient): Promise<num
   return count
 }
 
-async function syncOrders(storeId: string, client: ShopifyClient, sinceDate: Date): Promise<{ orders: number; transactions: number; refunds: number }> {
+async function syncOrders(storeId: string, client: ShopifyClient, sinceDate: Date, useUpdatedAt = false): Promise<{ orders: number; transactions: number; refunds: number }> {
   let orderCount = 0
   let transactionCount = 0
   let refundCount = 0
@@ -412,7 +435,7 @@ async function syncOrders(storeId: string, client: ShopifyClient, sinceDate: Dat
     const response = await client.getOrders({
       limit: 250,
       page_info: pageInfo,
-      created_at_min: sinceDate.toISOString(),
+      ...(useUpdatedAt ? { updated_at_min: sinceDate.toISOString() } : { created_at_min: sinceDate.toISOString() }),
       status: 'any', // Include all orders, not just open
     })
     const { orders } = response.data
@@ -525,21 +548,21 @@ async function syncOrders(storeId: string, client: ShopifyClient, sinceDate: Dat
                 currency: tx.currency,
                 processedAt: new Date(tx.processed_at),
                 paymentFee: feeAmount,
-                paymentFeeCalculated: feeAmount > 0,
+                paymentFeeCalculated: tx.receipt?.fee_amount !== undefined && Number.isFinite(feeAmount),
               },
               update: {
                 status: tx.status,
                 amount: parseFloat(tx.amount || '0'),
                 paymentFee: feeAmount,
-                paymentFeeCalculated: feeAmount > 0,
+                paymentFeeCalculated: tx.receipt?.fee_amount !== undefined && Number.isFinite(feeAmount),
               },
             })
             transactionCount++
           }
         }
       } catch (txError) {
-        // Continue if transaction sync fails for individual order
-        console.warn(`Failed to sync transactions for order ${orderData.id}:`, txError)
+        // Keep the watermark unchanged so incomplete orders can be retried.
+        throw txError
       }
 
       // Sync refunds

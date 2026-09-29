@@ -17,7 +17,7 @@ export async function middleware(request: NextRequest) {
   }
 
   // Allow public API routes
-  if (pathname.startsWith('/api/auth')) {
+  if (pathname.startsWith('/api/auth/') || pathname === '/api/shopify/webhooks') {
     return NextResponse.next()
   }
 

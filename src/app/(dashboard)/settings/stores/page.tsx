@@ -58,6 +58,19 @@ export default function StoresPage() {
   // Fetch stores on mount
   useEffect(() => {
     fetchStores()
+    const params = new URLSearchParams(window.location.search)
+    const error = params.get('error')
+    if (error) {
+      const messages: Record<string, string> = {
+        invalid_shop: 'Ange butikens korrekta myshopify.com-adress.',
+        invalid_state: 'Anslutningen gick ut. Starta kopplingen igen.',
+        store_already_connected: 'Butiken är redan kopplad till en annan arbetsyta.',
+        shopify_not_configured: 'Shopify-kopplingen saknar inställningar på servern.',
+      }
+      setSyncStatus({ type: 'error', message: messages[error] || 'Shopify-kopplingen misslyckades. Försök igen.' })
+    } else if (params.get('success') === 'connected') {
+      setSyncStatus({ type: 'success', message: 'Shopify-butiken är ansluten.' })
+    }
   }, [])
 
   const fetchStores = async () => {
@@ -84,7 +97,7 @@ export default function StoresPage() {
       : `${shopDomain}.myshopify.com`
 
     // Redirect to Shopify OAuth
-    window.location.href = `/api/shopify/oauth?shop=${fullDomain}`
+    window.location.href = `/api/shopify/oauth?shop=${encodeURIComponent(fullDomain)}`
   }
 
   const handleSync = async (storeId: string, incremental: boolean = true, sinceDate?: string) => {

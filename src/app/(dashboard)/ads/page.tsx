@@ -68,6 +68,7 @@ interface AdAccount {
   isActive: boolean
   lastSyncAt: string | null
   lastSyncStatus: string | null
+  syncError: string | null
   currency: string
 }
 
@@ -130,6 +131,8 @@ function AdsPageContent() {
       setNotification({ type: 'success', message: 'Facebook Ads account connected successfully!' })
     } else if (success === 'google_connected') {
       setNotification({ type: 'success', message: 'Google Ads account connected successfully!' })
+    } else if (success === 'google_partial') {
+      setNotification({ type: 'error', message: 'Some Google Ads accounts connected. Other accounts could not be accessed; check account permissions.' })
     } else if (success === 'google_sheets_connected') {
       setNotification({ type: 'success', message: 'Google Ads (via Sheets) connected successfully!' })
     } else if (error) {
@@ -140,6 +143,8 @@ function AdsPageContent() {
         no_google_accounts: 'No Google Ads accounts found.',
         token_failed: 'Failed to get access token. Please try again.',
         no_team: 'No team found. Please set up your account first.',
+        invalid_state: 'Connection verification expired. Please start the connection again.',
+        facebook_not_configured: 'Meta integration is not configured. Please contact the administrator.',
         facebook_failed: 'Failed to connect Facebook Ads. Please try again.',
         google_failed: 'Failed to connect Google Ads. Please try again.',
         google_not_configured: 'Google Ads integration is not configured. Please contact support.',
@@ -211,7 +216,7 @@ function AdsPageContent() {
         fetchData() // Refresh data
       } else {
         const error = await response.json()
-        setNotification({ type: 'error', message: error.details || 'Sync failed' })
+        setNotification({ type: 'error', message: error.details || error.error || 'Sync failed' })
       }
     } catch {
       setNotification({ type: 'error', message: 'Failed to sync. Please try again.' })
@@ -394,6 +399,15 @@ function AdsPageContent() {
                   <div className="text-left">
                     <p className="font-medium">Facebook Ads</p>
                     <p className="text-sm text-slate-500">Connect via Meta Business Suite</p>
+                  </div>
+                </div>
+              </Button>
+              <Button variant="outline" className="justify-start h-16" onClick={() => connectPlatform('google')}>
+                <div className="flex items-center gap-4">
+                  <div className="p-2 bg-white border rounded-lg"><GoogleIcon /></div>
+                  <div className="text-left">
+                    <p className="font-medium">Google Ads</p>
+                    <p className="text-sm text-slate-500">Direct connection (requires configured Google Ads access)</p>
                   </div>
                 </div>
               </Button>
@@ -588,8 +602,9 @@ function AdsPageContent() {
                     </div>
                     <div className="flex items-center gap-2">
                       <Badge variant={account.isActive ? 'default' : 'secondary'}>
-                        {account.isActive ? 'Connected' : 'Disconnected'}
+                        {account.lastSyncStatus === 'FAILED' ? 'Needs attention' : account.isActive ? 'Connected' : 'Setup required'}
                       </Badge>
+                      {account.syncError && <p className="text-sm text-red-600">{account.syncError}</p>}
                       <Button
                         variant="outline"
                         size="sm"
