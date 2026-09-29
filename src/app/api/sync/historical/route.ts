@@ -2,11 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { decrypt, encrypt } from '@/lib/encryption'
+import { decrypt } from '@/lib/encryption'
 import { syncRateLimiter, getRateLimitKey, getRateLimitHeaders } from '@/lib/rate-limit'
 import { ShopifyClient } from '@/services/shopify/client'
-import { FacebookAdsClient, extractConversions, extractRoas } from '@/services/ads/facebook'
-import { GoogleSheetsAdsClient, refreshGoogleSheetsToken } from '@/services/ads/google-sheets'
+import { syncAdAccount, validDateRange } from '@/lib/sync/ad-account'
 
 // Shopify rate limit delay
 const SHOPIFY_API_DELAY_MS = 600
@@ -81,9 +80,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid startDate format' }, { status: 400 })
   }
 
+  const syncDateFrom = startDateParsed.toISOString().slice(0, 10)
   const endDateParsed = endDate ? new Date(endDate) : new Date()
-  const syncDateFrom = startDate
-  const syncDateTo = endDateParsed.toISOString().split('T')[0]
+  if (!Number.isFinite(endDateParsed.getTime())) {
+    return NextResponse.json({ error: 'Invalid endDate format' }, { status: 400 })
+  }
+  const syncDateTo = endDateParsed.toISOString().slice(0, 10)
+  if (!validDateRange(syncDateFrom, syncDateTo)) {
+    return NextResponse.json({ error: 'Invalid date range' }, { status: 400 })
+  }
 
   // Get user's team
   const teamMember = await prisma.teamMember.findFirst({
@@ -144,7 +149,7 @@ export async function POST(request: NextRequest) {
     const successCount = results.filter(r => r.success).length
 
     return NextResponse.json({
-      success: true,
+      success: results.length > 0 && results.every(result => result.success),
       message: `Synkade ${totalCount} poster från ${successCount} källor`,
       results,
       summary: {
@@ -177,6 +182,14 @@ export async function GET(request: NextRequest) {
 
   if (!syncId) {
     return NextResponse.json({ error: 'Missing syncId' }, { status: 400 })
+  }
+
+  const teamId = syncId.slice(0, syncId.lastIndexOf('-historical-'))
+  const membership = await prisma.teamMember.findFirst({
+    where: { teamId, userId: session.user.id }, select: { teamId: true },
+  })
+  if (!syncId.includes('-historical-') || !membership) {
+    return NextResponse.json({ error: 'Sync not found or expired' }, { status: 404 })
   }
 
   const syncStatus = activeSyncs.get(syncId)
@@ -260,14 +273,14 @@ async function runHistoricalSync(
       })
 
       if (account.platform === 'FACEBOOK') {
-        const result = await syncFacebookHistorical(account, syncDateFrom, syncDateTo)
+        const result = await syncAdAccount(account, syncDateFrom, syncDateTo)
         results.push({
           source: account.accountName || `Facebook ${account.platformAccountId}`,
           type: 'facebook',
           ...result
         })
       } else if (account.platform === 'GOOGLE') {
-        const result = await syncGoogleHistorical(account, syncDateFrom, syncDateTo)
+        const result = await syncAdAccount(account, syncDateFrom, syncDateTo)
         results.push({
           source: account.accountName || `Google ${account.platformAccountId}`,
           type: 'google',
@@ -281,8 +294,9 @@ async function runHistoricalSync(
     const successCount = results.filter(r => r.success).length
 
     activeSyncs.set(syncId, {
-      status: 'completed',
-      progress: `Klar! Synkade ${totalCount} poster från ${successCount} källor.`,
+      status: results.length > 0 && results.every(result => result.success) ? 'completed' : 'failed',
+      error: results.length === 0 ? 'Inga anslutna datakällor kunde synkas.' : results.some(result => !result.success) ? 'En eller flera datakällor misslyckades. Se resultaten.' : undefined,
+      progress: `Synkningen avslutad. Synkade ${totalCount} poster från ${successCount} källor.`,
       results,
       startedAt: activeSyncs.get(syncId)?.startedAt || new Date()
     })
@@ -350,10 +364,10 @@ async function runHistoricalSyncBlocking(
     if (!account.accessTokenEncrypted) continue
 
     if (account.platform === 'FACEBOOK') {
-      const result = await syncFacebookHistorical(account, syncDateFrom, syncDateTo)
+      const result = await syncAdAccount(account, syncDateFrom, syncDateTo)
       results.push({ source: account.accountName || `Facebook`, type: 'facebook', ...result })
     } else if (account.platform === 'GOOGLE') {
-      const result = await syncGoogleHistorical(account, syncDateFrom, syncDateTo)
+      const result = await syncAdAccount(account, syncDateFrom, syncDateTo)
       results.push({ source: account.accountName || `Google`, type: 'google', ...result })
     }
   }
@@ -575,273 +589,6 @@ async function syncShopifyHistorical(
     return { success: true, count: orderCount }
   } catch (error) {
     console.error(`Shopify historical sync error for ${store.name}:`, error)
-    return {
-      success: false,
-      count: 0,
-      error: error instanceof Error ? error.message : 'Unknown error',
-    }
-  }
-}
-
-async function syncFacebookHistorical(
-  account: {
-    id: string
-    platformAccountId: string
-    accessTokenEncrypted: string | null
-    currency: string
-  },
-  dateFrom: string,
-  dateTo: string
-): Promise<{ success: boolean; count: number; error?: string }> {
-  if (!account.accessTokenEncrypted) {
-    return { success: false, count: 0, error: 'No access token' }
-  }
-
-  try {
-    const accessToken = decrypt(account.accessTokenEncrypted)
-    const client = new FacebookAdsClient(accessToken)
-
-    const insights = await client.getInsights(
-      account.platformAccountId,
-      dateFrom,
-      dateTo,
-      'campaign'
-    )
-
-    let count = 0
-
-    for (const insight of insights) {
-      const spend = parseFloat(insight.spend || '0')
-      const impressions = parseInt(insight.impressions || '0', 10)
-      const clicks = parseInt(insight.clicks || '0', 10)
-      const conversions = extractConversions(insight.actions)
-      const roas = extractRoas(insight.purchase_roas)
-
-      const cpc = clicks > 0 ? spend / clicks : 0
-      const cpm = impressions > 0 ? (spend / impressions) * 1000 : 0
-      const revenue = roas * spend
-
-      const dateStr = insight.date_start
-      const [year, month, day] = dateStr.split('-').map(Number)
-      const date = new Date(Date.UTC(year, month - 1, day, 12, 0, 0))
-      const campaignId = insight.campaign_id || null
-      const adSetId = insight.adset_id || null
-
-      const dateStart = new Date(Date.UTC(year, month - 1, day, 0, 0, 0))
-      const dateEnd = new Date(Date.UTC(year, month - 1, day, 23, 59, 59))
-
-      const existing = await prisma.adSpend.findFirst({
-        where: {
-          adAccountId: account.id,
-          date: { gte: dateStart, lte: dateEnd },
-          campaignId,
-          adSetId,
-        },
-      })
-
-      if (existing) {
-        await prisma.adSpend.update({
-          where: { id: existing.id },
-          data: {
-            spend,
-            impressions,
-            clicks,
-            conversions,
-            revenue,
-            roas,
-            cpc,
-            cpm,
-            campaignName: insight.campaign_name || null,
-            adSetName: insight.adset_name || null,
-          },
-        })
-      } else {
-        await prisma.adSpend.create({
-          data: {
-            adAccountId: account.id,
-            date,
-            spend,
-            impressions,
-            clicks,
-            conversions,
-            revenue,
-            roas,
-            cpc,
-            cpm,
-            currency: account.currency,
-            campaignId,
-            campaignName: insight.campaign_name || null,
-            adSetId,
-            adSetName: insight.adset_name || null,
-          },
-        })
-      }
-
-      count++
-    }
-
-    await prisma.adAccount.update({
-      where: { id: account.id },
-      data: {
-        lastSyncAt: new Date(),
-        lastSyncStatus: 'SUCCESS',
-        syncError: null,
-      },
-    })
-
-    return { success: true, count }
-  } catch (error) {
-    console.error('Facebook historical sync error:', error)
-
-    await prisma.adAccount.update({
-      where: { id: account.id },
-      data: {
-        lastSyncStatus: 'FAILED',
-        syncError: error instanceof Error ? error.message : 'Unknown error',
-      },
-    })
-
-    return {
-      success: false,
-      count: 0,
-      error: error instanceof Error ? error.message : 'Unknown error',
-    }
-  }
-}
-
-async function syncGoogleHistorical(
-  account: {
-    id: string
-    platformAccountId: string
-    accessTokenEncrypted: string | null
-    refreshTokenEncrypted: string | null
-    tokenExpiresAt: Date | null
-    currency: string
-  },
-  dateFrom: string,
-  dateTo: string
-): Promise<{ success: boolean; count: number; error?: string }> {
-  if (!account.accessTokenEncrypted) {
-    return { success: false, count: 0, error: 'No access token' }
-  }
-
-  const spreadsheetId = account.platformAccountId.startsWith('sheets:')
-    ? account.platformAccountId.substring(7)
-    : account.platformAccountId
-
-  try {
-    let accessToken = decrypt(account.accessTokenEncrypted)
-
-    // Check if token needs refresh
-    if (account.tokenExpiresAt && account.tokenExpiresAt < new Date()) {
-      if (!account.refreshTokenEncrypted) {
-        return { success: false, count: 0, error: 'Token expired and no refresh token' }
-      }
-
-      const refreshToken = decrypt(account.refreshTokenEncrypted)
-      const clientId = process.env.GOOGLE_CLIENT_ID || ''
-      const clientSecret = process.env.GOOGLE_CLIENT_SECRET || ''
-
-      const newTokens = await refreshGoogleSheetsToken(refreshToken, clientId, clientSecret)
-      accessToken = newTokens.access_token
-
-      const tokenExpiresAt = new Date()
-      tokenExpiresAt.setSeconds(tokenExpiresAt.getSeconds() + newTokens.expires_in)
-
-      await prisma.adAccount.update({
-        where: { id: account.id },
-        data: {
-          accessTokenEncrypted: encrypt(accessToken),
-          tokenExpiresAt,
-        },
-      })
-    }
-
-    const client = new GoogleSheetsAdsClient({
-      accessToken,
-      spreadsheetId,
-    })
-
-    const data = await client.getAdSpendData(dateFrom, dateTo)
-    let count = 0
-
-    for (const row of data) {
-      const [year, month, day] = row.date.split('-').map(Number)
-      const date = new Date(Date.UTC(year, month - 1, day, 12, 0, 0))
-      const roas = row.cost > 0 ? row.conversionValue / row.cost : 0
-      const cpc = row.clicks > 0 ? row.cost / row.clicks : 0
-      const cpm = row.impressions > 0 ? (row.cost / row.impressions) * 1000 : 0
-
-      const dateStart = new Date(Date.UTC(year, month - 1, day, 0, 0, 0))
-      const dateEnd = new Date(Date.UTC(year, month - 1, day, 23, 59, 59))
-
-      const existing = await prisma.adSpend.findFirst({
-        where: {
-          adAccountId: account.id,
-          date: { gte: dateStart, lte: dateEnd },
-          campaignId: row.campaignId,
-        },
-      })
-
-      if (existing) {
-        await prisma.adSpend.update({
-          where: { id: existing.id },
-          data: {
-            spend: row.cost,
-            impressions: row.impressions,
-            clicks: row.clicks,
-            conversions: Math.round(row.conversions),
-            revenue: row.conversionValue,
-            roas,
-            cpc,
-            cpm,
-            campaignName: row.campaignName,
-          },
-        })
-      } else {
-        await prisma.adSpend.create({
-          data: {
-            adAccountId: account.id,
-            date,
-            spend: row.cost,
-            impressions: row.impressions,
-            clicks: row.clicks,
-            conversions: Math.round(row.conversions),
-            revenue: row.conversionValue,
-            roas,
-            cpc,
-            cpm,
-            currency: row.currency || account.currency,
-            campaignId: row.campaignId,
-            campaignName: row.campaignName,
-          },
-        })
-      }
-
-      count++
-    }
-
-    await prisma.adAccount.update({
-      where: { id: account.id },
-      data: {
-        lastSyncAt: new Date(),
-        lastSyncStatus: 'SUCCESS',
-        syncError: null,
-      },
-    })
-
-    return { success: true, count }
-  } catch (error) {
-    console.error('Google historical sync error:', error)
-
-    await prisma.adAccount.update({
-      where: { id: account.id },
-      data: {
-        lastSyncStatus: 'FAILED',
-        syncError: error instanceof Error ? error.message : 'Unknown error',
-      },
-    })
-
     return {
       success: false,
       count: 0,
