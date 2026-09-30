@@ -325,7 +325,7 @@ function AdsPageContent() {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Kunde inte skapa skriptet')
       setScriptCopied(false)
-      setScriptDialog({ accountId: data.accountId, script: data.script, rotated: !!accountId })
+      setScriptDialog({ accountId: data.accountId, script: data.script, rotated: !!data.rotated })
       fetchData(true)
     } catch (error) {
       setNotification({ type: 'error', message: error instanceof Error ? error.message : 'Kunde inte skapa skriptet' })
@@ -649,7 +649,7 @@ function AdsPageContent() {
                               size="sm"
                               onClick={() => openGoogleScript(account.id)}
                               disabled={scriptLoading}
-                              title="Visa skriptet igen (skapar en ny nyckel)"
+                              title="Visa skriptet"
                             >
                               <Code className="w-4 h-4" />
                             </Button>
