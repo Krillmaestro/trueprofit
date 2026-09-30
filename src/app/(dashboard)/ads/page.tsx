@@ -34,9 +34,18 @@ import {
   Loader2,
   History,
   Calendar,
+  Copy,
+  Code,
 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+
+// Google Ads Script accounts push their own data (see src/lib/google-ads-script.ts)
+const isScriptAccount = (a: { platform: string; platformAccountId: string }) =>
+  a.platform === 'GOOGLE' && a.platformAccountId.startsWith('script:')
+
+// Script runs hourly; flag the connection if nothing has arrived for longer than this
+const SCRIPT_STALE_HOURS = 3
 
 // Platform icons
 const FacebookIcon = () => (
@@ -120,6 +129,9 @@ function AdsPageContent() {
   const [historicalSyncDialog, setHistoricalSyncDialog] = useState<AdAccount | null>(null)
   const [historicalSyncDate, setHistoricalSyncDate] = useState('2024-08-01')
   const [cleaningUp, setCleaningUp] = useState(false)
+  const [scriptDialog, setScriptDialog] = useState<{ accountId: string; script: string; rotated: boolean } | null>(null)
+  const [scriptLoading, setScriptLoading] = useState(false)
+  const [scriptCopied, setScriptCopied] = useState(false)
 
   // Check for OAuth callback messages
   useEffect(() => {
@@ -159,8 +171,8 @@ function AdsPageContent() {
     fetchData()
   }, [])
 
-  const fetchData = async () => {
-    setLoading(true)
+  const fetchData = async (silent = false) => {
+    if (!silent) setLoading(true)
     try {
       const [accountsRes, spendsRes] = await Promise.all([
         fetch('/api/ads/accounts'),
@@ -300,6 +312,44 @@ function AdsPageContent() {
     }
   }
 
+  // Create a Google Ads Script connection, or rotate the key of an existing one
+  const openGoogleScript = async (accountId?: string) => {
+    setDialogOpen(false)
+    setScriptLoading(true)
+    try {
+      const res = await fetch('/api/ads/google/script', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(accountId ? { accountId } : {}),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Kunde inte skapa skriptet')
+      setScriptCopied(false)
+      setScriptDialog({ accountId: data.accountId, script: data.script, rotated: !!accountId })
+      fetchData(true)
+    } catch (error) {
+      setNotification({ type: 'error', message: error instanceof Error ? error.message : 'Kunde inte skapa skriptet' })
+      setTimeout(() => setNotification(null), 5000)
+    } finally {
+      setScriptLoading(false)
+    }
+  }
+
+  const copyScript = async () => {
+    if (!scriptDialog) return
+    await navigator.clipboard.writeText(scriptDialog.script)
+    setScriptCopied(true)
+  }
+
+  // While the script dialog is open, poll until the first push arrives
+  const scriptAccount = scriptDialog ? adAccounts.find((a) => a.id === scriptDialog.accountId) : undefined
+  const scriptReceived = !!scriptAccount?.lastSyncAt
+  useEffect(() => {
+    if (!scriptDialog || scriptReceived) return
+    const timer = setInterval(() => fetchData(true), 5000)
+    return () => clearInterval(timer)
+  }, [scriptDialog, scriptReceived])
+
   const connectPlatform = (platform: 'facebook' | 'google' | 'google_sheets' | 'tiktok') => {
     setDialogOpen(false)
     if (platform === 'facebook') {
@@ -400,30 +450,16 @@ function AdsPageContent() {
               <Button
                 variant="outline"
                 className="justify-start h-16"
-                onClick={() => connectPlatform('google_sheets')}
+                onClick={() => openGoogleScript()}
+                disabled={scriptLoading}
               >
                 <div className="flex items-center gap-4">
                   <div className="p-2 bg-white border rounded-lg">
                     <GoogleIcon />
                   </div>
                   <div className="text-left">
-                    <p className="font-medium">Google Ads (via Sheets)</p>
-                    <p className="text-sm text-slate-500">Enkel setup utan Developer Token</p>
-                  </div>
-                </div>
-              </Button>
-              <Button
-                variant="outline"
-                className="justify-start h-16 opacity-50"
-                onClick={() => connectPlatform('google')}
-              >
-                <div className="flex items-center gap-4">
-                  <div className="p-2 bg-white border rounded-lg">
-                    <GoogleIcon />
-                  </div>
-                  <div className="text-left">
-                    <p className="font-medium">Google Ads (API)</p>
-                    <p className="text-sm text-slate-500">Kräver Developer Token (MCC)</p>
+                    <p className="font-medium">Google Ads</p>
+                    <p className="text-sm text-slate-500">Klistra in ett skript i Google Ads – spend och sales kommer in varje timme</p>
                   </div>
                 </div>
               </Button>
@@ -580,13 +616,47 @@ function AdsPageContent() {
                       <div>
                         <p className="font-medium text-slate-800 dark:text-slate-100">{account.accountName || `Account ${account.platformAccountId}`}</p>
                         <p className="text-sm text-slate-500 dark:text-slate-400">
-                          {account.lastSyncAt
-                            ? `Last sync: ${new Date(account.lastSyncAt).toLocaleString('sv-SE')}`
-                            : 'Never synced'}
+                          {isScriptAccount(account)
+                            ? account.lastSyncAt
+                              ? `Senast mottaget från Google Ads: ${new Date(account.lastSyncAt).toLocaleString('sv-SE')}`
+                              : 'Väntar på första körningen av skriptet'
+                            : account.lastSyncAt
+                              ? `Last sync: ${new Date(account.lastSyncAt).toLocaleString('sv-SE')}`
+                              : 'Never synced'}
                         </p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
+                      {isScriptAccount(account) ? (() => {
+                        const hoursSince = account.lastSyncAt
+                          ? (Date.now() - new Date(account.lastSyncAt).getTime()) / 3600000
+                          : null
+                        const stale = hoursSince === null || hoursSince > SCRIPT_STALE_HOURS
+                        return (
+                          <>
+                            <Badge
+                              variant={stale ? 'secondary' : 'default'}
+                              className={stale ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300' : ''}
+                            >
+                              {hoursSince === null
+                                ? 'Väntar på data'
+                                : stale
+                                  ? `Ingen data på ${Math.floor(hoursSince)} h`
+                                  : 'Tar emot data'}
+                            </Badge>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => openGoogleScript(account.id)}
+                              disabled={scriptLoading}
+                              title="Visa skriptet igen (skapar en ny nyckel)"
+                            >
+                              <Code className="w-4 h-4" />
+                            </Button>
+                          </>
+                        )
+                      })() : (
+                      <>
                       <Badge variant={account.isActive ? 'default' : 'secondary'}>
                         {account.isActive ? 'Connected' : 'Disconnected'}
                       </Badge>
@@ -613,6 +683,8 @@ function AdsPageContent() {
                       >
                         <History className="w-4 h-4" />
                       </Button>
+                      </>
+                      )}
                     </div>
                   </div>
                 )
@@ -693,6 +765,69 @@ function AdsPageContent() {
           )}
         </CardContent>
       </Card>
+
+      {/* Google Ads Script Dialog */}
+      <Dialog open={!!scriptDialog} onOpenChange={(open) => !open && setScriptDialog(null)}>
+        <DialogContent className="w-[96vw] sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <GoogleIcon />
+              Koppla Google Ads
+            </DialogTitle>
+            <DialogDescription>
+              Skriptet skickar spend, klick, konverteringar och konverteringsvärde (sales) per kampanj och dag
+              till TrueProfit. Ingen Google-inloggning eller Sheets behövs.
+            </DialogDescription>
+          </DialogHeader>
+
+          {scriptDialog?.rotated && (
+            <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 text-sm">
+              <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+              <span>En ny nyckel har skapats. Det gamla skriptet slutar fungera – ersätt koden i Google Ads med den här.</span>
+            </div>
+          )}
+
+          <ol className="list-decimal pl-5 space-y-1 text-sm text-slate-700 dark:text-slate-300">
+            <li>Kopiera skriptet nedan.</li>
+            <li>
+              Öppna{' '}
+              <a href="https://ads.google.com/aw/bulk/scripts" target="_blank" rel="noopener noreferrer" className="text-violet-600 underline">
+                Google Ads → Verktyg → Massåtgärder → Skript
+              </a>{' '}
+              i annonskontot och skapa ett nytt skript med <strong>+</strong>.
+            </li>
+            <li>Klistra in koden, klicka <strong>Auktorisera</strong> och sedan <strong>Kör</strong>.</li>
+            <li>Spara och sätt <strong>Frekvens</strong> till <strong>Varje timme</strong>.</li>
+          </ol>
+
+          <div className="relative">
+            <pre className="max-h-64 overflow-auto rounded-lg bg-slate-900 text-slate-100 text-xs p-3 whitespace-pre">
+              {scriptDialog?.script}
+            </pre>
+            <Button size="sm" variant="secondary" className="absolute top-2 right-2" onClick={copyScript}>
+              {scriptCopied ? <CheckCircle className="w-4 h-4 mr-1" /> : <Copy className="w-4 h-4 mr-1" />}
+              {scriptCopied ? 'Kopierat' : 'Kopiera'}
+            </Button>
+          </div>
+
+          <div className={`flex items-center gap-2 p-3 rounded-lg text-sm ${
+            scriptReceived
+              ? 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-300'
+              : 'bg-slate-50 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
+          }`}>
+            {scriptReceived ? <CheckCircle className="w-4 h-4" /> : <Loader2 className="w-4 h-4 animate-spin" />}
+            {scriptReceived
+              ? `Data mottagen från ${scriptAccount?.accountName || 'Google Ads'}!`
+              : 'Väntar på första körningen av skriptet…'}
+          </div>
+
+          <DialogFooter>
+            <Button variant={scriptReceived ? 'default' : 'outline'} onClick={() => setScriptDialog(null)}>
+              {scriptReceived ? 'Klar' : 'Stäng'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Historical Sync Dialog */}
       <Dialog open={!!historicalSyncDialog} onOpenChange={() => setHistoricalSyncDialog(null)}>

@@ -7,6 +7,7 @@ import { syncRateLimiter, getRateLimitKey, getRateLimitHeaders } from '@/lib/rat
 import { ShopifyClient } from '@/services/shopify/client'
 import { FacebookAdsClient, extractConversions, extractRoas } from '@/services/ads/facebook'
 import { GoogleSheetsAdsClient, refreshGoogleSheetsToken } from '@/services/ads/google-sheets'
+import { isScriptAccount } from '@/lib/google-ads-script'
 
 // Shopify rate limit delay - 500ms for 2 req/sec limit
 const SHOPIFY_API_DELAY_MS = 500
@@ -134,6 +135,8 @@ export async function POST(request: NextRequest) {
   // Sync Ad Accounts
   for (const account of adAccounts) {
     if (!account.accessTokenEncrypted) continue
+    // Google Ads Script accounts push their own data via /api/ads/google/ingest
+    if (isScriptAccount(account.platformAccountId)) continue
 
     if (account.platform === 'FACEBOOK') {
       syncPromises.push(

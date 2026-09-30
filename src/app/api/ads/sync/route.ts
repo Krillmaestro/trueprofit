@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma'
 import { encrypt, decrypt } from '@/lib/encryption'
 import { FacebookAdsClient, extractConversions, extractRoas } from '@/services/ads/facebook'
 import { GoogleSheetsAdsClient, refreshGoogleSheetsToken } from '@/services/ads/google-sheets'
+import { isScriptAccount } from '@/lib/google-ads-script'
 
 // Google OAuth credentials for Sheets integration
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || ''
@@ -35,6 +36,15 @@ export async function POST(request: NextRequest) {
 
   if (!adAccount || !adAccount.accessTokenEncrypted) {
     return NextResponse.json({ error: 'Ad account not found or not connected' }, { status: 404 })
+  }
+
+  // Google Ads Script accounts push their own data via /api/ads/google/ingest
+  if (isScriptAccount(adAccount.platformAccountId)) {
+    return NextResponse.json({
+      success: true,
+      syncedCount: 0,
+      message: 'Google Ads-skriptet skickar data automatiskt varje timme',
+    })
   }
 
   try {

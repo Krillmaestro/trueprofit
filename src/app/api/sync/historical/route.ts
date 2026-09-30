@@ -7,6 +7,7 @@ import { syncRateLimiter, getRateLimitKey, getRateLimitHeaders } from '@/lib/rat
 import { ShopifyClient } from '@/services/shopify/client'
 import { FacebookAdsClient, extractConversions, extractRoas } from '@/services/ads/facebook'
 import { GoogleSheetsAdsClient, refreshGoogleSheetsToken } from '@/services/ads/google-sheets'
+import { SCRIPT_ACCOUNT_PREFIX } from '@/lib/google-ads-script'
 
 // Shopify rate limit delay
 const SHOPIFY_API_DELAY_MS = 600
@@ -212,7 +213,8 @@ async function runHistoricalSync(
         },
       }) : [],
       syncAds ? prisma.adAccount.findMany({
-        where: { teamId, isActive: true },
+        // Google Ads Script accounts push their own data via /api/ads/google/ingest
+        where: { teamId, isActive: true, NOT: { platformAccountId: { startsWith: SCRIPT_ACCOUNT_PREFIX } } },
         select: {
           id: true,
           platform: true,
@@ -325,7 +327,7 @@ async function runHistoricalSyncBlocking(
       },
     }) : [],
     syncAds ? prisma.adAccount.findMany({
-      where: { teamId, isActive: true },
+      where: { teamId, isActive: true, NOT: { platformAccountId: { startsWith: SCRIPT_ACCOUNT_PREFIX } } },
       select: {
         id: true,
         platform: true,

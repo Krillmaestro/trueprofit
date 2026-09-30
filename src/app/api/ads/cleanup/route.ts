@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { SCRIPT_ACCOUNT_PREFIX } from '@/lib/google-ads-script'
 
 /**
  * DELETE /api/ads/cleanup
@@ -72,11 +73,13 @@ export async function DELETE() {
       }
     }
 
-    // Now clear ALL ad spend data to start fresh
+    // Now clear ALL ad spend data to start fresh. Google Ads Script accounts are
+    // kept: they can't be re-pulled, their data only arrives on the next script run.
     const clearedSpends = await prisma.adSpend.deleteMany({
       where: {
         adAccount: {
-          teamId: teamMember.teamId
+          teamId: teamMember.teamId,
+          NOT: { platformAccountId: { startsWith: SCRIPT_ACCOUNT_PREFIX } },
         }
       }
     })
