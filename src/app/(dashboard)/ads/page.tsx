@@ -794,7 +794,7 @@ function AdsPageContent() {
               <a href="https://ads.google.com/aw/bulk/scripts" target="_blank" rel="noopener noreferrer" className="text-violet-600 underline">
                 Google Ads → Verktyg → Massåtgärder → Skript
               </a>{' '}
-              i annonskontot och skapa ett nytt skript med <strong>+</strong>.
+              (annonskontot eller förvaltarkontot/MCC) och skapa ett nytt skript med <strong>+</strong>.
             </li>
             <li>Klistra in koden, klicka <strong>Auktorisera</strong> och sedan <strong>Kör</strong>.</li>
             <li>Spara och sätt <strong>Frekvens</strong> till <strong>Varje timme</strong>.</li>
