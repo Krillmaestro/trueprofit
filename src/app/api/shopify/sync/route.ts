@@ -334,9 +334,16 @@ async function syncProducts(storeId: string, client: ShopifyClient): Promise<num
           },
         })
 
-        // Sync COGS from Shopify if available
+        // Sync COGS from Shopify if available. Manually entered COGS (e.g. from
+        // supplier invoices) always wins over Shopify's "cost per item", which is
+        // often a placeholder – never let a sync override it.
         const shopifyCost = costLookup.get(variant.inventory_item_id?.toString() || '')
-        if (shopifyCost && shopifyCost > 0) {
+        const hasManualCogs = shopifyCost
+          ? (await prisma.variantCOGS.count({
+              where: { variantId: savedVariant.id, source: 'MANUAL', effectiveTo: null },
+            })) > 0
+          : false
+        if (shopifyCost && shopifyCost > 0 && !hasManualCogs) {
           // Check if we already have a SHOPIFY_COST entry for this variant
           const existingCogs = await prisma.variantCOGS.findFirst({
             where: {
