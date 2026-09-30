@@ -791,7 +791,7 @@ function AdsPageContent() {
             <li>Kopiera skriptet nedan.</li>
             <li>
               Öppna{' '}
-              <a href="https://ads.google.com/aw/bulk/scripts" target="_blank" rel="noopener noreferrer" className="text-violet-600 underline">
+              <a href="https://ads.google.com/aw/bulk/scripts/management" target="_blank" rel="noopener noreferrer" className="text-violet-600 underline">
                 Google Ads → Verktyg → Massåtgärder → Skript
               </a>{' '}
               (annonskontot eller förvaltarkontot/MCC) och skapa ett nytt skript med <strong>+</strong>.
