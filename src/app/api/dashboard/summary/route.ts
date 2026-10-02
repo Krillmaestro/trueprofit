@@ -400,7 +400,9 @@ async function computeDashboardSummary(
   // FINAL NET PROFIT
   // ===========================================
   // Net Profit = Omsättning (inkl moms) - Total Costs (inkl moms)
-  const finalNetProfit = omsattning - totalCosts
+  // Refunds are money paid back: remove them ex moms (the moms part comes back from Skatteverket)
+  const refundsExVat = omsattning > 0 ? totalRefunds * (1 - totalTax / omsattning) : 0
+  const finalNetProfit = omsattning - totalCosts - refundsExVat
 
   // Margin based on omsättning (inkl moms)
   const finalNetMargin = safeMargin(finalNetProfit, omsattning)

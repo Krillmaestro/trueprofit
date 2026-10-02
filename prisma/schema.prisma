@@ -70,6 +70,7 @@ model Team {
   updatedAt      DateTime         @updatedAt @map("updated_at")
   adAccounts     AdAccount[]
   bankAccounts   BankAccount[]
+  offers         Offer[]
   cogsZones      COGSZone[]
   costCategories CostCategory[]
   customCosts    CustomCost[]
@@ -119,6 +120,7 @@ model TeamSettings {
   fiscalYearStart Int      @default(1) @map("fiscal_year_start")
   dateFormat      String   @default("YYYY-MM-DD") @map("date_format")
   numberFormat    String   @default("sv-SE") @map("number_format")
+  pnlSettings     Json?    @map("pnl_settings")
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
   team            Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
@@ -650,6 +652,20 @@ model InventorySnapshot {
   @@index([storeId])
   @@index([snapshotDate])
   @@map("inventory_snapshots")
+}
+
+model Offer {
+  id        String   @id @default(cuid())
+  teamId    String   @map("team_id")
+  name      String
+  sortOrder Int      @default(0) @map("sort_order")
+  config    Json
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([teamId])
+  @@map("offers")
 }
 
 model AuditLog {

@@ -1,651 +1,628 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { FileText, TrendingUp, TrendingDown, DollarSign, AlertCircle, Loader2 } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Skeleton } from '@/components/ui/skeleton'
+import { useToast } from '@/components/ui/toast'
+import { AlertCircle, AlertTriangle, Download, Loader2, Settings2 } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import type { PnLColumn, PnLReport } from '@/lib/pnl/engine'
+import type { PnLSettings } from '@/lib/pnl/settings'
 
-interface PnLData {
-  period: string
-  dateRange: { start: string; end: string }
-  revenue: {
-    omsattning?: number    // Shopify "Omsättning" (inkl VAT)
-    grossRevenue?: number  // Legacy: Matches Shopify "Omsättning" (inkl VAT)
-    grossSales: number     // Legacy fallback
-    vat?: number           // VAT amount
-    discounts: number
-    returns: number
-    shippingRevenue?: number  // What customer paid for shipping
-    shipping: number       // Legacy fallback
-    tax: number
-    revenueExVat?: number  // Revenue excluding VAT
-    netRevenue: number     // Legacy fallback
-  }
-  cogs: {
-    productCosts: number
-    shippingCosts?: number  // Our ACTUAL shipping cost (from tiers) - may be in operatingExpenses.fulfillment
-    totalCOGS: number
-  }
-  grossProfit: number
-  grossMargin: number
-  operatingExpenses: {
-    fulfillment?: {
-      shippingCosts: number
-      total: number
-    }
-    marketing: {
-      byPlatform: Record<string, number>
-      total: number
-    }
-    paymentFees: {
-      byGateway: Record<string, number>
-      total: number
-    }
-    fixed: {
-      byName: Record<string, number>
-      salaries: number
-      total: number
-    }
-    variable: {
-      byName: Record<string, number>
-      total: number
-    }
-    oneTime: number
-    totalOpex: number
-  }
-  operatingProfit: number
-  operatingMargin: number
-  totalCosts?: number  // All business costs (excluding VAT)
-  estimatedTax?: {
-    rate: number
-    amount: number
-    profitAfterTax: number
-  }
-  // Legacy fields
-  taxes?: {
-    rate: number
-    amount: number
-  }
-  netProfit: number
-  netMargin: number
-  orderCount: number
-  avgOrderValue: number
+// ===========================================
+// FORMATTING
+// ===========================================
+
+const kr = (v: number) =>
+  new Intl.NumberFormat('sv-SE', { maximumFractionDigits: 0 }).format(Math.round(v)) + ' kr'
+const num = (v: number, d = 0) =>
+  new Intl.NumberFormat('sv-SE', { minimumFractionDigits: d, maximumFractionDigits: d }).format(v)
+const pct = (v: number) => `${num(v, 1)} %`
+
+// ===========================================
+// PERIODS (Stockholm calendar days)
+// ===========================================
+
+function todayStr() {
+  return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Stockholm' }).format(new Date())
+}
+function monthStart(date: string, monthsBack: number) {
+  const [y, m] = date.split('-').map(Number)
+  return new Date(Date.UTC(y, m - 1 - monthsBack, 1)).toISOString().slice(0, 10)
+}
+function monthEnd(date: string, monthsBack: number) {
+  const [y, m] = date.split('-').map(Number)
+  return new Date(Date.UTC(y, m - monthsBack, 0)).toISOString().slice(0, 10)
 }
 
-// Demo P&L data for when there's no real data
-const demoPnL: PnLData = {
-  period: 'January 2025',
-  dateRange: { start: '2025-01-01', end: '2025-01-31' },
-  revenue: {
-    grossSales: 523400,
-    discounts: -15200,
-    returns: -8600,
-    shipping: 42000,
-    tax: 104680,
-    netRevenue: 499600,
-  },
-  cogs: {
-    productCosts: 165000,
-    shippingCosts: 42000,
-    totalCOGS: 207000,
-  },
-  grossProfit: 292600,
-  grossMargin: 58.6,
-  operatingExpenses: {
-    marketing: {
-      byPlatform: { facebook: 35000, google: 22000, tiktok: 8000 },
-      total: 65000,
-    },
-    paymentFees: {
-      byGateway: { Stripe: 12500, Klarna: 8200, PayPal: 4300 },
-      total: 25000,
-    },
-    fixed: {
-      byName: { Rent: 15000, Software: 8500, Insurance: 2500 },
-      salaries: 45000,
-      total: 71000,
-    },
-    variable: {
-      byName: { 'Office Supplies': 3000, Utilities: 2000 },
-      total: 5000,
-    },
-    oneTime: 0,
-    totalOpex: 166000,
-  },
-  operatingProfit: 126600,
-  operatingMargin: 25.3,
-  taxes: {
-    rate: 20.6,
-    amount: 26080,
-  },
-  netProfit: 100520,
-  netMargin: 20.1,
-  orderCount: 847,
-  avgOrderValue: 590,
+const PRESETS: Array<{ key: string; label: string; range: () => [string, string] }> = [
+  { key: 'mtd', label: 'Denna månad', range: () => [monthStart(todayStr(), 0), todayStr()] },
+  { key: 'last', label: 'Förra månaden', range: () => [monthStart(todayStr(), 1), monthEnd(todayStr(), 1)] },
+  { key: '3m', label: '3 mån', range: () => [monthStart(todayStr(), 2), todayStr()] },
+  { key: '6m', label: '6 mån', range: () => [monthStart(todayStr(), 5), todayStr()] },
+  { key: '12m', label: '12 mån', range: () => [monthStart(todayStr(), 11), todayStr()] },
+  { key: 'ytd', label: 'I år', range: () => [`${todayStr().slice(0, 4)}-01-01`, todayStr()] },
+]
+
+// ===========================================
+// ROW MODEL
+// ===========================================
+
+type RowKind = 'line' | 'sub' | 'subtotal' | 'result' | 'section' | 'memo'
+interface Row {
+  key: string
+  label: string
+  kind: RowKind
+  value?: (c: PnLColumn) => number
+  help?: string
 }
+
+function buildRows(report: PnLReport): Row[] {
+  const platforms = new Set<string>()
+  const opexNames = new Set<string>()
+  for (const c of [...report.columns, report.total]) {
+    Object.keys(c.marketing.byPlatform).forEach((p) => platforms.add(p))
+    Object.keys(c.opex.byName).forEach((p) => opexNames.add(p))
+  }
+
+  return [
+    { key: 's-rev', label: 'Intäkter', kind: 'section' },
+    { key: 'gross', label: 'Bruttoförsäljning (inkl. moms)', kind: 'sub', value: (c) => c.revenue.grossSales, help: 'Σ pris × antal före rabatt' },
+    { key: 'disc', label: 'Rabatter', kind: 'sub', value: (c) => c.revenue.discounts },
+    { key: 'ship', label: 'Fraktintäkter', kind: 'sub', value: (c) => c.revenue.shippingRevenue },
+    { key: 'oms', label: 'Omsättning inkl. moms', kind: 'line', value: (c) => c.revenue.omsattningInklMoms, help: '= Shopify total_price. Ska stämma mot Shopify Analytics.' },
+    { key: 'vat', label: 'Moms', kind: 'line', value: (c) => c.revenue.vat },
+    { key: 'ref', label: 'Returer (ex moms)', kind: 'line', value: (c) => c.revenue.refunds, help: 'Bokförs den dag återbetalningen gjordes.' },
+    { key: 'net', label: 'Nettoomsättning', kind: 'subtotal', value: (c) => c.revenue.netRevenue },
+
+    { key: 's-cogs', label: 'Varukostnad', kind: 'section' },
+    { key: 'cogs-p', label: 'Produkter', kind: 'sub', value: (c) => c.cogs.products },
+    { key: 'cogs-g', label: 'Gåvor (0 kr-rader)', kind: 'sub', value: (c) => c.cogs.gifts },
+    { key: 'tb1', label: 'Bruttovinst (TB1)', kind: 'subtotal', value: (c) => c.grossProfit },
+
+    { key: 's-var', label: 'Rörliga kostnader', kind: 'section' },
+    { key: 'ful', label: '3PL & frakt', kind: 'sub', value: (c) => c.variable.fulfillment },
+    { key: 'fees', label: 'Betalavgifter', kind: 'sub', value: (c) => c.variable.paymentFees, help: `Schablon ${num(report.settings.paymentFeePct, 2)} % + ${num(report.settings.paymentFeeFixed)} kr per order på det kunden betalar.` },
+    { key: 'tb2', label: 'TB2 – före marknadsföring', kind: 'subtotal', value: (c) => c.contributionBeforeMarketing },
+
+    { key: 's-mkt', label: 'Marknadsföring', kind: 'section' },
+    ...[...platforms].sort().map<Row>((p) => ({ key: `mkt-${p}`, label: p, kind: 'sub', value: (c) => c.marketing.byPlatform[p] ?? 0 })),
+    { key: 'tb3', label: 'TB3 – efter marknadsföring', kind: 'subtotal', value: (c) => c.contributionAfterMarketing },
+
+    { key: 's-opex', label: 'Fasta & övriga kostnader', kind: 'section' },
+    ...(opexNames.size === 0
+      ? [{ key: 'opex-none', label: 'Inga kostnader inlagda under Expenses', kind: 'memo' as RowKind, value: () => 0 }]
+      : [...opexNames].sort().map<Row>((name) => ({ key: `opex-${name}`, label: name, kind: 'sub', value: (c) => c.opex.byName[name] ?? 0 }))),
+    { key: 'op', label: 'Rörelseresultat', kind: 'result', value: (c) => c.operatingProfit },
+    { key: 'tax', label: `Bolagsskatt (${num(report.settings.corporateTaxPct, 1)} %, uppskattad)`, kind: 'sub', value: (c) => c.corporateTax },
+    { key: 'pat', label: 'Resultat efter skatt', kind: 'result', value: (c) => c.profitAfterTax },
+  ]
+}
+
+const METRICS: Array<{ key: string; label: string; fmt: (c: PnLColumn) => string; help?: string }> = [
+  { key: 'orders', label: 'Ordrar', fmt: (c) => num(c.metrics.orders) },
+  { key: 'units', label: 'Burkar (huvudprodukt)', fmt: (c) => num(c.metrics.units) },
+  { key: 'aov', label: 'AOV inkl. moms', fmt: (c) => kr(c.metrics.aovInklMoms) },
+  { key: 'cac', label: 'CAC (marknadsföring / order)', fmt: (c) => kr(c.metrics.cac) },
+  { key: 'ppo', label: 'TB3 per order', fmt: (c) => kr(c.metrics.profitPerOrder) },
+  { key: 'mer', label: 'MER (omsättning inkl. moms / ads)', fmt: (c) => num(c.metrics.mer, 2) },
+  { key: 'bemer', label: 'Break-even MER', fmt: (c) => num(c.metrics.breakEvenMer, 2), help: 'MER där TB3 blir 0 kr' },
+  { key: 'refunds', label: 'Returer (antal / inkl. moms)', fmt: (c) => `${c.metrics.refundCount} / ${kr(c.metrics.refundsInklMoms)}` },
+]
+
+// ===========================================
+// PAGE
+// ===========================================
 
 export default function PnLPage() {
-  const [periodType, setPeriodType] = useState('month')
-  const [pnlData, setPnlData] = useState<PnLData | null>(null)
+  const [preset, setPreset] = useState('3m')
+  const [range, setRange] = useState<[string, string]>(() => PRESETS.find((p) => p.key === '3m')!.range())
+  const [report, setReport] = useState<PnLReport | null>(null)
   const [loading, setLoading] = useState(true)
-  const [, setError] = useState<string | null>(null)
-  const [isDemo, setIsDemo] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+
+  const load = useCallback(async (start: string, end: string) => {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/pnl?start=${start}&end=${end}`)
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`)
+      setReport(await res.json())
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Kunde inte hämta P&L')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
 
   useEffect(() => {
-    const fetchData = async () => {
-      setLoading(true)
-      setError(null)
+    load(range[0], range[1])
+  }, [range, load])
 
-      try {
-        const response = await fetch(`/api/pnl?periodType=${periodType}`)
-        if (!response.ok) {
-          throw new Error('Failed to fetch P&L data')
-        }
+  const rows = useMemo(() => (report ? buildRows(report) : []), [report])
+  const showColumns = report && report.columns.length > 1 ? report.columns : []
 
-        const data = await response.json()
-
-        // Check if there's real data
-        if (data.orderCount === 0) {
-          setIsDemo(true)
-          setPnlData(demoPnL)
-        } else {
-          setIsDemo(false)
-          setPnlData(data)
-        }
-      } catch (err) {
-        console.error('Error fetching P&L data:', err)
-        setError('Failed to load P&L data')
-        setIsDemo(true)
-        setPnlData(demoPnL)
-      } finally {
-        setLoading(false)
-      }
+  const exportCsv = () => {
+    if (!report) return
+    const cols = [...showColumns, report.total]
+    const lines = [['Rad', ...cols.map((c) => c.label)].join(';')]
+    for (const r of rows) {
+      if (!r.value) continue
+      lines.push([r.label, ...cols.map((c) => Math.round(r.value!(c)))].join(';'))
     }
-
-    fetchData()
-  }, [periodType])
-
-  const formatCurrency = (value: number) => {
-    const absValue = Math.abs(value)
-    const formatted = absValue.toLocaleString('sv-SE', { maximumFractionDigits: 0 })
-    return `${value < 0 ? '-' : ''}${formatted} kr`
-  }
-
-  const handleExportCSV = () => {
-    if (!pnlData) return
-
-    const grossRevenue = pnlData.revenue.grossRevenue || pnlData.revenue.grossSales
-    const vat = pnlData.revenue.vat || pnlData.revenue.tax
-    const revenueExVat = pnlData.revenue.revenueExVat || pnlData.revenue.netRevenue
-
-    const rows = [
-      ['P&L Report', pnlData.period],
-      [''],
-      ['INTÄKTER'],
-      ['Omsättning (inkl. moms)', grossRevenue],
-      ['Moms (pass-through)', -vat],
-      ['Rabatter', pnlData.revenue.discounts],
-      ['Returer & Återbetalningar', pnlData.revenue.returns],
-      ['Nettoomsättning (ex. moms)', revenueExVat],
-      [''],
-      ['COGS (Varukostnad)'],
-      ['Produktkostnader', -pnlData.cogs.productCosts],
-      ['Fraktkostnader', -(pnlData.cogs.shippingCosts || pnlData.operatingExpenses.fulfillment?.shippingCosts || 0)],
-      ['Total COGS', -pnlData.cogs.totalCOGS],
-      [''],
-      ['BRUTTOVINST', pnlData.grossProfit],
-      ['Bruttomarginal', `${pnlData.grossMargin}%`],
-      [''],
-      ['RÖRELSEKOSTNADER'],
-      ['Marknadsföring & Annonser', -pnlData.operatingExpenses.marketing.total],
-      ['Betalningsavgifter', -pnlData.operatingExpenses.paymentFees.total],
-      ['Fasta kostnader', -pnlData.operatingExpenses.fixed.total],
-      ['Rörliga kostnader', -pnlData.operatingExpenses.variable.total],
-      ['Engångskostnader', -pnlData.operatingExpenses.oneTime],
-      ['Totala rörelsekostnader', -pnlData.operatingExpenses.totalOpex],
-      [''],
-      ['RÖRELSERESULTAT (EBIT)', pnlData.operatingProfit],
-      ['Rörelsemarginal', `${pnlData.operatingMargin}%`],
-      [''],
-      ['NETTOVINST (disponibelt)', pnlData.netProfit],
-      ['Nettomarginal', `${pnlData.netMargin}%`],
-    ]
-
-    const csv = rows.map(row => row.join(',')).join('\n')
-    const blob = new Blob([csv], { type: 'text/csv' })
-    const url = URL.createObjectURL(blob)
+    const blob = new Blob(['﻿' + lines.join('\n')], { type: 'text/csv;charset=utf-8' })
     const a = document.createElement('a')
-    a.href = url
-    a.download = `pnl-report-${pnlData.period.toLowerCase().replace(/\s+/g, '-')}.csv`
+    a.href = URL.createObjectURL(blob)
+    a.download = `pnl-${report.range.start}-${report.range.end}.csv`
     a.click()
-    URL.revokeObjectURL(url)
-  }
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
-      </div>
-    )
-  }
-
-  if (!pnlData) {
-    return (
-      <Alert variant="destructive">
-        <AlertCircle className="h-4 w-4" />
-        <AlertDescription>Failed to load P&L data</AlertDescription>
-      </Alert>
-    )
   }
 
   return (
     <div className="space-y-6">
-      {/* Demo Alert */}
-      {isDemo && (
-        <Alert className="bg-amber-50 border-amber-200">
-          <AlertCircle className="h-4 w-4 text-amber-600" />
-          <AlertDescription className="text-amber-800">
-            Showing demo data. Connect a Shopify store and sync orders to see your real P&L.
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {/* Page Header */}
-      <div className="flex items-center justify-between">
+      {/* Header */}
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">P&L Report</h1>
-          <p className="text-slate-600 dark:text-slate-400">Profit & Loss statement</p>
+          <h1 className="text-2xl font-bold text-slate-800">P&L</h1>
+          <p className="text-slate-600">
+            Resultaträkning per månad, svensk tid. Allt under nettoomsättning är ex moms.
+          </p>
         </div>
-        <div className="flex gap-2">
-          <Select value={periodType} onValueChange={setPeriodType}>
-            <SelectTrigger className="w-48">
-              <SelectValue placeholder="Select period" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="month">This Month</SelectItem>
-              <SelectItem value="quarter">This Quarter</SelectItem>
-              <SelectItem value="year">This Year</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button variant="outline" onClick={handleExportCSV}>
-            <FileText className="w-4 h-4 mr-2" />
-            Export CSV
+        <div className="flex flex-wrap items-center gap-2">
+          {PRESETS.map((p) => (
+            <Button
+              key={p.key}
+              size="sm"
+              variant={preset === p.key ? 'default' : 'outline'}
+              onClick={() => {
+                setPreset(p.key)
+                setRange(p.range())
+              }}
+            >
+              {p.label}
+            </Button>
+          ))}
+          <div className="flex items-center gap-1">
+            <Input
+              type="date"
+              className="h-8 w-[140px]"
+              value={range[0]}
+              onChange={(e) => {
+                setPreset('custom')
+                if (e.target.value) setRange([e.target.value, range[1]])
+              }}
+            />
+            <span className="text-slate-400">–</span>
+            <Input
+              type="date"
+              className="h-8 w-[140px]"
+              value={range[1]}
+              onChange={(e) => {
+                setPreset('custom')
+                if (e.target.value) setRange([range[0], e.target.value])
+              }}
+            />
+          </div>
+          <Button size="sm" variant="outline" onClick={exportCsv} disabled={!report}>
+            <Download className="mr-1 h-4 w-4" /> CSV
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => setSettingsOpen(true)} disabled={!report}>
+            <Settings2 className="mr-1 h-4 w-4" /> Antaganden
           </Button>
         </div>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-slate-600 dark:text-slate-400">Net Revenue</p>
-                <p className="text-2xl font-bold text-slate-800 dark:text-slate-100">
-                  {formatCurrency(pnlData.revenue.netRevenue)}
-                </p>
-                <p className="text-xs text-slate-500 dark:text-slate-400">{pnlData.orderCount} orders</p>
-              </div>
-              <DollarSign className="h-8 w-8 text-blue-500 opacity-50" />
-            </div>
-          </CardContent>
-        </Card>
+      {error && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
 
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-slate-600 dark:text-slate-400">Gross Profit</p>
-                <p className="text-2xl font-bold text-slate-800 dark:text-slate-100">
-                  {formatCurrency(pnlData.grossProfit)}
-                </p>
-                <p className="text-sm text-green-600 dark:text-green-400">{pnlData.grossMargin}% margin</p>
-              </div>
-              <TrendingUp className="h-8 w-8 text-green-500 opacity-50" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-slate-600 dark:text-slate-400">Operating Profit</p>
-                <p className="text-2xl font-bold text-slate-800 dark:text-slate-100">
-                  {formatCurrency(pnlData.operatingProfit)}
-                </p>
-                <p className="text-sm text-green-600 dark:text-green-400">{pnlData.operatingMargin}% margin</p>
-              </div>
-              <TrendingUp className="h-8 w-8 text-amber-500 opacity-50" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-slate-600 dark:text-slate-400">Net Profit</p>
-                <p className={`text-2xl font-bold ${pnlData.netProfit >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                  {formatCurrency(pnlData.netProfit)}
-                </p>
-                <p className={`text-sm ${pnlData.netMargin >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                  {pnlData.netMargin}% margin
-                </p>
-              </div>
-              {pnlData.netProfit >= 0 ? (
-                <TrendingUp className="h-8 w-8 text-green-500 opacity-50" />
-              ) : (
-                <TrendingDown className="h-8 w-8 text-red-500 opacity-50" />
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* P&L Statement */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Profit & Loss Statement</CardTitle>
-          <CardDescription>{pnlData.period}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-6">
-            {/* Revenue Section */}
-            <div>
-              <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-200 mb-3 flex items-center">
-                <DollarSign className="w-5 h-5 mr-2 text-blue-500" />
-                Intäkter
-              </h3>
-              <div className="space-y-2 pl-7">
-                <div className="flex justify-between py-2 border-b border-slate-100 dark:border-slate-700">
-                  <span className="text-slate-600 dark:text-slate-400">Omsättning (inkl. moms)</span>
-                  <span className="font-medium dark:text-slate-200">{formatCurrency(pnlData.revenue.omsattning || pnlData.revenue.grossRevenue || pnlData.revenue.grossSales)}</span>
-                </div>
-                <div className="flex justify-between py-2 border-b border-slate-100 dark:border-slate-700">
-                  <span className="text-slate-600 dark:text-slate-400">Moms (kostnad)</span>
-                  <span className="font-medium text-red-600">{formatCurrency(-(pnlData.revenue.vat || pnlData.revenue.tax || 0))}</span>
-                </div>
-                <div className="flex justify-between py-2 border-b border-slate-100 dark:border-slate-700">
-                  <span className="text-slate-600 dark:text-slate-400">Rabatter</span>
-                  <span className="font-medium text-red-600">{formatCurrency(pnlData.revenue.discounts)}</span>
-                </div>
-                <div className="flex justify-between py-2 border-b border-slate-100 dark:border-slate-700">
-                  <span className="text-slate-600 dark:text-slate-400">Returer & Återbetalningar</span>
-                  <span className="font-medium text-red-600">{formatCurrency(pnlData.revenue.returns)}</span>
-                </div>
-                <div className="flex justify-between py-2 bg-blue-50 dark:bg-blue-900/30 px-3 rounded-lg font-semibold">
-                  <span className="dark:text-slate-200">Nettoomsättning (ex. moms)</span>
-                  <span className="dark:text-slate-200">{formatCurrency(pnlData.revenue.revenueExVat || pnlData.revenue.netRevenue)}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* COGS Section */}
-            <div>
-              <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-200 mb-3 flex items-center">
-                <TrendingDown className="w-5 h-5 mr-2 text-red-500" />
-                Cost of Goods Sold
-              </h3>
-              <div className="space-y-2 pl-7">
-                <div className="flex justify-between py-2 border-b border-slate-100 dark:border-slate-700">
-                  <span className="text-slate-600 dark:text-slate-400">Product Costs</span>
-                  <span className="font-medium text-red-600">{formatCurrency(-(pnlData.cogs.productCosts || 0))}</span>
-                </div>
-                {/* Shipping costs - check both cogs and operatingExpenses.fulfillment */}
-                {(pnlData.cogs.shippingCosts || pnlData.operatingExpenses.fulfillment?.shippingCosts) ? (
-                  <div className="flex justify-between py-2 border-b border-slate-100 dark:border-slate-700">
-                    <span className="text-slate-600 dark:text-slate-400">Shipping Costs</span>
-                    <span className="font-medium text-red-600">{formatCurrency(-(pnlData.cogs.shippingCosts || pnlData.operatingExpenses.fulfillment?.shippingCosts || 0))}</span>
-                  </div>
-                ) : null}
-                <div className="flex justify-between py-2 bg-red-50 dark:bg-red-900/30 px-3 rounded-lg font-semibold">
-                  <span className="dark:text-slate-200">Total COGS</span>
-                  <span className="text-red-600">{formatCurrency(-(pnlData.cogs.totalCOGS || 0))}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Gross Profit */}
-            <div className="flex justify-between py-3 bg-green-50 dark:bg-green-900/30 px-4 rounded-lg">
-              <span className="font-bold text-green-800 dark:text-green-300">Gross Profit</span>
-              <div className="text-right">
-                <span className="font-bold text-green-600 dark:text-green-400">{formatCurrency(pnlData.grossProfit)}</span>
-                <span className="text-sm text-green-600 dark:text-green-400 ml-2">({pnlData.grossMargin}%)</span>
-              </div>
-            </div>
-
-            {/* Operating Expenses */}
-            <div>
-              <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-200 mb-3 flex items-center">
-                <TrendingDown className="w-5 h-5 mr-2 text-amber-500" />
-                Operating Expenses
-              </h3>
-
-              {/* Marketing */}
-              {pnlData.operatingExpenses.marketing.total > 0 && (
-                <div className="mb-4">
-                  <p className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 pl-7">Marketing & Advertising</p>
-                  <div className="space-y-2 pl-7">
-                    {Object.entries(pnlData.operatingExpenses.marketing.byPlatform).map(([platform, amount]) => (
-                      <div key={platform} className="flex justify-between py-1 text-sm">
-                        <span className="text-slate-500 dark:text-slate-400 capitalize">{platform} Ads</span>
-                        <span className="text-red-600 dark:text-red-400">-{formatCurrency(amount)}</span>
-                      </div>
-                    ))}
-                    <div className="flex justify-between py-1 border-t border-slate-200 dark:border-slate-700 font-medium">
-                      <span className="text-slate-600 dark:text-slate-300">Total Marketing</span>
-                      <span className="text-red-600 dark:text-red-400">-{formatCurrency(pnlData.operatingExpenses.marketing.total)}</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Payment Fees */}
-              {pnlData.operatingExpenses.paymentFees.total > 0 && (
-                <div className="mb-4">
-                  <p className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 pl-7">Payment Processing Fees</p>
-                  <div className="space-y-2 pl-7">
-                    {Object.entries(pnlData.operatingExpenses.paymentFees.byGateway).map(([gateway, amount]) => (
-                      <div key={gateway} className="flex justify-between py-1 text-sm">
-                        <span className="text-slate-500 dark:text-slate-400">{gateway}</span>
-                        <span className="text-red-600 dark:text-red-400">-{formatCurrency(amount)}</span>
-                      </div>
-                    ))}
-                    <div className="flex justify-between py-1 border-t border-slate-200 dark:border-slate-700 font-medium">
-                      <span className="text-slate-600 dark:text-slate-300">Total Payment Fees</span>
-                      <span className="text-red-600 dark:text-red-400">-{formatCurrency(pnlData.operatingExpenses.paymentFees.total)}</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Fixed Costs */}
-              {pnlData.operatingExpenses.fixed.total > 0 && (
-                <div className="mb-4">
-                  <p className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 pl-7">Fixed Costs</p>
-                  <div className="space-y-2 pl-7">
-                    {Object.entries(pnlData.operatingExpenses.fixed.byName).map(([name, amount]) => (
-                      <div key={name} className="flex justify-between py-1 text-sm">
-                        <span className="text-slate-500 dark:text-slate-400">{name}</span>
-                        <span className="text-red-600 dark:text-red-400">-{formatCurrency(amount)}</span>
-                      </div>
-                    ))}
-                    {pnlData.operatingExpenses.fixed.salaries > 0 && (
-                      <div className="flex justify-between py-1 text-sm">
-                        <span className="text-slate-500 dark:text-slate-400">Salaries</span>
-                        <span className="text-red-600 dark:text-red-400">-{formatCurrency(pnlData.operatingExpenses.fixed.salaries)}</span>
-                      </div>
-                    )}
-                    <div className="flex justify-between py-1 border-t border-slate-200 dark:border-slate-700 font-medium">
-                      <span className="text-slate-600 dark:text-slate-300">Total Fixed Costs</span>
-                      <span className="text-red-600 dark:text-red-400">-{formatCurrency(pnlData.operatingExpenses.fixed.total)}</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Variable Costs */}
-              {pnlData.operatingExpenses.variable.total > 0 && (
-                <div className="mb-4">
-                  <p className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 pl-7">Variable Costs</p>
-                  <div className="space-y-2 pl-7">
-                    {Object.entries(pnlData.operatingExpenses.variable.byName).map(([name, amount]) => (
-                      <div key={name} className="flex justify-between py-1 text-sm">
-                        <span className="text-slate-500 dark:text-slate-400">{name}</span>
-                        <span className="text-red-600 dark:text-red-400">-{formatCurrency(amount)}</span>
-                      </div>
-                    ))}
-                    <div className="flex justify-between py-1 border-t border-slate-200 dark:border-slate-700 font-medium">
-                      <span className="text-slate-600 dark:text-slate-300">Total Variable Costs</span>
-                      <span className="text-red-600 dark:text-red-400">-{formatCurrency(pnlData.operatingExpenses.variable.total)}</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* One-time Costs */}
-              {pnlData.operatingExpenses.oneTime > 0 && (
-                <div className="mb-4 pl-7">
-                  <div className="flex justify-between py-1 font-medium">
-                    <span className="text-slate-600 dark:text-slate-300">One-time Costs</span>
-                    <span className="text-red-600 dark:text-red-400">-{formatCurrency(pnlData.operatingExpenses.oneTime)}</span>
-                  </div>
-                </div>
-              )}
-
-              {/* Total OpEx */}
-              <div className="flex justify-between py-2 bg-amber-50 dark:bg-amber-900/30 px-3 rounded-lg font-semibold ml-7">
-                <span className="dark:text-slate-200">Total Operating Expenses</span>
-                <span className="text-red-600 dark:text-red-400">-{formatCurrency(pnlData.operatingExpenses.totalOpex)}</span>
-              </div>
-            </div>
-
-            {/* Operating Profit */}
-            <div className="flex justify-between py-3 bg-blue-50 dark:bg-blue-900/30 px-4 rounded-lg">
-              <span className="font-bold text-blue-800 dark:text-blue-300">Operating Profit (EBIT)</span>
-              <div className="text-right">
-                <span className={`font-bold ${pnlData.operatingProfit >= 0 ? 'text-blue-600 dark:text-blue-400' : 'text-red-600 dark:text-red-400'}`}>
-                  {formatCurrency(pnlData.operatingProfit)}
-                </span>
-                <span className={`text-sm ml-2 ${pnlData.operatingMargin >= 0 ? 'text-blue-600 dark:text-blue-400' : 'text-red-600 dark:text-red-400'}`}>
-                  ({pnlData.operatingMargin}%)
-                </span>
-              </div>
-            </div>
-
-            {/* Net Profit - MATCHES DASHBOARD */}
-            <div className={`flex justify-between py-4 px-4 rounded-lg border-2 ${
-              pnlData.netProfit >= 0
-                ? 'bg-green-100 dark:bg-green-900/40 border-green-200 dark:border-green-700'
-                : 'bg-red-100 dark:bg-red-900/40 border-red-200 dark:border-red-700'
-            }`}>
-              <span className={`font-bold text-lg ${pnlData.netProfit >= 0 ? 'text-green-800 dark:text-green-300' : 'text-red-800 dark:text-red-300'}`}>
-                Nettovinst
-              </span>
-              <div className="text-right">
-                <span className={`font-bold text-lg ${pnlData.netProfit >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                  {formatCurrency(pnlData.netProfit)}
-                </span>
-                <span className={`text-sm ml-2 ${pnlData.netMargin >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                  ({pnlData.netMargin}%)
-                </span>
-              </div>
-            </div>
-
-            {/* Info about the profit figure */}
-            <div className="mt-4 p-4 bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-700 rounded-lg">
-              <p className="text-sm text-emerald-800 dark:text-emerald-300">
-                <strong>💡 Tips:</strong> Nettovinsten är beloppet du kan disponera via lön, utdelning eller återinvestering.
-                Målet är ofta att optimera uttag så att bolagsvinsten blir minimal.
-              </p>
-            </div>
+      {loading && !report ? (
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
+            {[...Array(6)].map((_, i) => <Skeleton key={i} className="h-24" />)}
           </div>
-        </CardContent>
-      </Card>
+          <Skeleton className="h-[600px]" />
+        </div>
+      ) : report ? (
+        <div className={cn('space-y-6 transition-opacity', loading && 'opacity-50')}>
+          <KpiRow total={report.total} />
+          <DataQualityPanel report={report} />
 
-      {/* Additional Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg dark:text-slate-100">Order Metrics</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              <div className="flex justify-between">
-                <span className="text-slate-600 dark:text-slate-400">Total Orders</span>
-                <span className="font-medium dark:text-slate-200">{pnlData.orderCount}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-600 dark:text-slate-400">Average Order Value</span>
-                <span className="font-medium dark:text-slate-200">{formatCurrency(pnlData.avgOrderValue)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-600 dark:text-slate-400">Revenue per Order</span>
-                <span className="font-medium dark:text-slate-200">
-                  {formatCurrency(pnlData.orderCount > 0 ? pnlData.revenue.netRevenue / pnlData.orderCount : 0)}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-600 dark:text-slate-400">Profit per Order</span>
-                <span className={`font-medium ${pnlData.netProfit >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                  {formatCurrency(pnlData.orderCount > 0 ? pnlData.netProfit / pnlData.orderCount : 0)}
-                </span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+          {/* P&L table */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2">
+                Resultaträkning
+                {loading && <Loader2 className="h-4 w-4 animate-spin text-slate-400" />}
+              </CardTitle>
+              <CardDescription>
+                {report.range.start} – {report.range.end} · {report.range.days} dagar
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="overflow-x-auto">
+              <table className="w-full text-sm tabular-nums">
+                <thead>
+                  <tr className="border-b border-slate-200 text-right text-xs uppercase tracking-wide text-slate-500">
+                    <th className="sticky left-0 bg-white py-2 pr-4 text-left font-medium">Rad</th>
+                    {showColumns.map((c) => (
+                      <th key={c.key} className="whitespace-nowrap px-3 py-2 font-medium">
+                        {c.label}
+                      </th>
+                    ))}
+                    <th className="whitespace-nowrap px-3 py-2 font-semibold text-slate-700">Totalt</th>
+                    <th className="whitespace-nowrap py-2 pl-3 font-medium">% av netto</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r) => (
+                    <PnLRow key={r.key} row={r} columns={showColumns} total={report.total} />
+                  ))}
+                </tbody>
+              </table>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg dark:text-slate-100">Cost Structure</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              <div className="flex justify-between">
-                <span className="text-slate-600 dark:text-slate-400">COGS % of Revenue</span>
-                <span className="font-medium dark:text-slate-200">
-                  {pnlData.revenue.netRevenue > 0
-                    ? ((pnlData.cogs.totalCOGS / pnlData.revenue.netRevenue) * 100).toFixed(1)
-                    : 0}%
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-600 dark:text-slate-400">Marketing % of Revenue</span>
-                <span className="font-medium dark:text-slate-200">
-                  {pnlData.revenue.netRevenue > 0
-                    ? ((pnlData.operatingExpenses.marketing.total / pnlData.revenue.netRevenue) * 100).toFixed(1)
-                    : 0}%
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-600 dark:text-slate-400">Payment Fees % of Revenue</span>
-                <span className="font-medium dark:text-slate-200">
-                  {pnlData.revenue.netRevenue > 0
-                    ? ((pnlData.operatingExpenses.paymentFees.total / pnlData.revenue.netRevenue) * 100).toFixed(1)
-                    : 0}%
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-600 dark:text-slate-400">Total OpEx % of Revenue</span>
-                <span className="font-medium dark:text-slate-200">
-                  {pnlData.revenue.netRevenue > 0
-                    ? ((pnlData.operatingExpenses.totalOpex / pnlData.revenue.netRevenue) * 100).toFixed(1)
-                    : 0}%
-                </span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+              {/* Metrics */}
+              <table className="mt-6 w-full text-sm tabular-nums">
+                <tbody>
+                  <tr>
+                    <td colSpan={showColumns.length + 3} className="pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Nyckeltal
+                    </td>
+                  </tr>
+                  {METRICS.map((m) => (
+                    <tr key={m.key} className="border-t border-slate-100">
+                      <td className="sticky left-0 bg-white py-1.5 pr-4 text-slate-600" title={m.help}>
+                        {m.label}
+                      </td>
+                      {showColumns.map((c) => (
+                        <td key={c.key} className="whitespace-nowrap px-3 py-1.5 text-right text-slate-700">{m.fmt(c)}</td>
+                      ))}
+                      <td className="whitespace-nowrap px-3 py-1.5 text-right font-medium text-slate-800">{m.fmt(report.total)}</td>
+                      <td />
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </CardContent>
+          </Card>
+
+          <ProductTable report={report} />
+
+          <p className="text-xs leading-relaxed text-slate-500">
+            Ordrar räknas på processed_at i svensk tid, avbrutna ordrar exkluderas. Varukostnad slås upp per orderdatum
+            (COGS-historik). 3PL & frakt räknas från fraktnivåerna per burk. Annonskostnad hämtas per kontodag och räknas om
+            till SEK. Produktraden får hela orderns intäkt och kostnad enligt huvudprodukten; annonser fördelas på
+            kampanjnamnet. Returer bokförs på återbetalningsdagen och dras ex moms.
+          </p>
+        </div>
+      ) : null}
+
+      {report && (
+        <SettingsDialog
+          open={settingsOpen}
+          onOpenChange={setSettingsOpen}
+          settings={report.settings}
+          onSaved={() => load(range[0], range[1])}
+        />
+      )}
     </div>
+  )
+}
+
+// ===========================================
+// COMPONENTS
+// ===========================================
+
+function PnLRow({ row, columns, total }: { row: Row; columns: PnLColumn[]; total: PnLColumn }) {
+  if (row.kind === 'section') {
+    return (
+      <tr>
+        <td colSpan={columns.length + 3} className="pb-1 pt-4 text-xs font-semibold uppercase tracking-wide text-slate-500">
+          {row.label}
+        </td>
+      </tr>
+    )
+  }
+  const value = row.value!
+  const totalValue = value(total)
+  const net = total.revenue.netRevenue
+  const strong = row.kind === 'subtotal' || row.kind === 'result'
+  const colored = row.kind === 'result' || row.key === 'tb3'
+
+  const cell = (v: number) => (
+    <span className={cn(colored && (v >= 0 ? 'text-emerald-700' : 'text-red-600'))}>{kr(v)}</span>
+  )
+
+  return (
+    <tr
+      className={cn(
+        'border-t border-slate-100',
+        row.kind === 'subtotal' && 'border-slate-300 bg-slate-50',
+        row.kind === 'result' && 'border-slate-400 bg-slate-100',
+        row.kind === 'memo' && 'text-slate-400'
+      )}
+    >
+      <td
+        className={cn(
+          'sticky left-0 py-1.5 pr-4',
+          row.kind === 'sub' ? 'pl-4 text-slate-600' : 'text-slate-800',
+          strong ? 'font-semibold' : '',
+          row.kind === 'subtotal' ? 'bg-slate-50' : row.kind === 'result' ? 'bg-slate-100' : 'bg-white'
+        )}
+        title={row.help}
+      >
+        {row.label}
+        {row.help && <span className="ml-1 cursor-help text-slate-400">ⓘ</span>}
+      </td>
+      {columns.map((c) => (
+        <td key={c.key} className={cn('whitespace-nowrap px-3 py-1.5 text-right', strong && 'font-semibold')}>
+          {row.kind === 'memo' ? '–' : cell(value(c))}
+        </td>
+      ))}
+      <td className={cn('whitespace-nowrap px-3 py-1.5 text-right font-medium', strong && 'font-bold')}>
+        {row.kind === 'memo' ? '–' : cell(totalValue)}
+      </td>
+      <td className="whitespace-nowrap py-1.5 pl-3 text-right text-slate-500">
+        {row.kind !== 'memo' && net !== 0 && !['gross', 'disc', 'ship', 'oms', 'vat'].includes(row.key)
+          ? pct((totalValue / net) * 100)
+          : ''}
+      </td>
+    </tr>
+  )
+}
+
+function Kpi({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone?: 'good' | 'bad' }) {
+  return (
+    <Card className="gap-1 py-4">
+      <CardContent className="px-4">
+        <div className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</div>
+        <div className={cn('mt-1 text-xl font-bold tabular-nums text-slate-800', tone === 'good' && 'text-emerald-700', tone === 'bad' && 'text-red-600')}>
+          {value}
+        </div>
+        {sub && <div className="mt-0.5 text-xs text-slate-500">{sub}</div>}
+      </CardContent>
+    </Card>
+  )
+}
+
+function KpiRow({ total }: { total: PnLColumn }) {
+  const net = total.revenue.netRevenue
+  const share = (v: number) => (net ? `${num((v / net) * 100, 1)} % av netto` : '')
+  const merOk = total.metrics.mer >= total.metrics.breakEvenMer
+  return (
+    <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
+      <Kpi label="Nettoomsättning" value={kr(net)} sub={`${kr(total.revenue.omsattningInklMoms)} inkl. moms`} />
+      <Kpi label="TB2 före marknadsf." value={kr(total.contributionBeforeMarketing)} sub={share(total.contributionBeforeMarketing)} />
+      <Kpi label="Marknadsföring" value={kr(-total.marketing.total)} sub={share(-total.marketing.total)} />
+      <Kpi
+        label="TB3 efter marknadsf."
+        value={kr(total.contributionAfterMarketing)}
+        sub={share(total.contributionAfterMarketing)}
+        tone={total.contributionAfterMarketing >= 0 ? 'good' : 'bad'}
+      />
+      <Kpi
+        label="MER"
+        value={num(total.metrics.mer, 2)}
+        sub={`Break-even ${num(total.metrics.breakEvenMer, 2)}`}
+        tone={merOk ? 'good' : 'bad'}
+      />
+      <Kpi label="Rörelseresultat" value={kr(total.operatingProfit)} sub={share(total.operatingProfit)} tone={total.operatingProfit >= 0 ? 'good' : 'bad'} />
+    </div>
+  )
+}
+
+function DataQualityPanel({ report }: { report: PnLReport }) {
+  const dq = report.dataQuality
+  const issues: React.ReactNode[] = []
+
+  if (dq.missingCogs.length > 0) {
+    const units = dq.missingCogs.reduce((s, m) => s + m.units, 0)
+    issues.push(
+      <span key="cogs">
+        <strong>{num(units)} enheter saknar varukostnad</strong> och räknas som 0 kr:{' '}
+        {dq.missingCogs.slice(0, 5).map((m) => `${m.title} (${num(m.units)} st)`).join(', ')}.{' '}
+        <Link href="/cogs" className="underline">Lägg in COGS</Link>
+      </span>
+    )
+  }
+  if (dq.noFixedCosts) {
+    issues.push(
+      <span key="fixed">
+        <strong>Inga fasta kostnader inlagda</strong> (Shopify, appar, löner, lokal, verktyg …) – rörelseresultatet är
+        därför lika med TB3. <Link href="/expenses" className="underline">Lägg in under Expenses</Link>
+      </span>
+    )
+  }
+  for (const a of dq.adAccounts.filter((a) => a.stale)) {
+    issues.push(
+      <span key={`ad-${a.name}`}>
+        <strong>{a.platform}-kontot {a.name}</strong> har data bara t.o.m. {a.lastDate} – synka under{' '}
+        <Link href="/ads" className="underline">Ads</Link>.
+      </span>
+    )
+  }
+  if (dq.unknownCurrencies.length > 0) {
+    issues.push(
+      <span key="fx">
+        Annonsvaluta utan växelkurs: {dq.unknownCurrencies.join(', ')} – räknas 1:1. Lägg till kursen under Antaganden.
+      </span>
+    )
+  }
+  if (dq.ordersWithoutShippingTier > 0) {
+    issues.push(<span key="tiers">{num(dq.ordersWithoutShippingTier)} ordrar saknar fraktnivå – 3PL räknas som 0 kr.</span>)
+  }
+
+  if (issues.length === 0) return null
+  return (
+    <Alert className="border-amber-300 bg-amber-50 text-amber-900">
+      <AlertTriangle className="h-4 w-4 text-amber-600" />
+      <AlertDescription className="space-y-1 text-amber-900">
+        <div className="font-semibold">Det här gör siffrorna mindre exakta</div>
+        <ul className="list-disc space-y-0.5 pl-5">
+          {issues.map((i, idx) => <li key={idx}>{i}</li>)}
+        </ul>
+      </AlertDescription>
+    </Alert>
+  )
+}
+
+function ProductTable({ report }: { report: PnLReport }) {
+  const rows = report.products
+  if (rows.length === 0) return null
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle>Per produkt</CardTitle>
+        <CardDescription>
+          Hela orderns intäkt och kostnad följer huvudprodukten. Annonser fördelas på kampanjnamnet. Break-even CAC = TB2 per order.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="overflow-x-auto">
+        <table className="w-full text-sm tabular-nums">
+          <thead>
+            <tr className="border-b border-slate-200 text-right text-xs uppercase tracking-wide text-slate-500">
+              <th className="py-2 pr-4 text-left font-medium">Produkt</th>
+              <th className="px-3 py-2 font-medium">Ordrar</th>
+              <th className="px-3 py-2 font-medium">Netto</th>
+              <th className="px-3 py-2 font-medium">Varukostn.</th>
+              <th className="px-3 py-2 font-medium">3PL + avg.</th>
+              <th className="px-3 py-2 font-medium">Returer</th>
+              <th className="px-3 py-2 font-medium">TB2</th>
+              <th className="px-3 py-2 font-medium">Annonser</th>
+              <th className="px-3 py-2 font-medium">TB3</th>
+              <th className="px-3 py-2 font-medium">TB3 %</th>
+              <th className="px-3 py-2 font-medium">CAC</th>
+              <th className="py-2 pl-3 font-medium">Break-even CAC</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((p) => {
+              const cacBad = p.orders > 0 && p.cac > p.breakEvenCac
+              return (
+                <tr key={p.key} className="border-t border-slate-100">
+                  <td className="py-1.5 pr-4 font-medium text-slate-800">{p.name}</td>
+                  <td className="px-3 py-1.5 text-right">{p.orders ? num(p.orders) : '–'}</td>
+                  <td className="px-3 py-1.5 text-right">{kr(p.netRevenue)}</td>
+                  <td className="px-3 py-1.5 text-right text-slate-600">{kr(-p.cogs)}</td>
+                  <td className="px-3 py-1.5 text-right text-slate-600">{kr(-(p.fulfillment + p.paymentFees))}</td>
+                  <td className="px-3 py-1.5 text-right text-slate-600">{kr(p.refunds)}</td>
+                  <td className="px-3 py-1.5 text-right">{kr(p.contributionBeforeMarketing)}</td>
+                  <td className="px-3 py-1.5 text-right text-slate-600">{kr(-p.adSpend)}</td>
+                  <td className={cn('px-3 py-1.5 text-right font-semibold', p.contributionAfterMarketing >= 0 ? 'text-emerald-700' : 'text-red-600')}>
+                    {kr(p.contributionAfterMarketing)}
+                  </td>
+                  <td className="px-3 py-1.5 text-right">{p.netRevenue ? pct(p.marginPct) : '–'}</td>
+                  <td className={cn('px-3 py-1.5 text-right', cacBad && 'font-semibold text-red-600')}>
+                    {p.orders ? kr(p.cac) : '–'}
+                  </td>
+                  <td className="py-1.5 pl-3 text-right">
+                    {p.orders ? kr(p.breakEvenCac) : '–'}
+                    {cacBad && <Badge variant="destructive" className="ml-2">över</Badge>}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </CardContent>
+    </Card>
+  )
+}
+
+function SettingsDialog({
+  open,
+  onOpenChange,
+  settings,
+  onSaved,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  settings: PnLSettings
+  onSaved: () => void
+}) {
+  const { addToast } = useToast()
+  const [draft, setDraft] = useState(settings)
+  const [saving, setSaving] = useState(false)
+  useEffect(() => setDraft(settings), [settings, open])
+
+  const field = (key: keyof PnLSettings, label: string, step = '0.01') => (
+    <label className="grid grid-cols-[1fr_120px] items-center gap-3 text-sm">
+      <span className="text-slate-700">{label}</span>
+      <Input
+        type="number"
+        step={step}
+        value={draft[key] as number}
+        onChange={(e) => setDraft({ ...draft, [key]: Number(e.target.value) })}
+      />
+    </label>
+  )
+
+  const save = async () => {
+    setSaving(true)
+    try {
+      const res = await fetch('/api/pnl/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(draft),
+      })
+      if (!res.ok) throw new Error()
+      addToast({ title: 'Antaganden sparade', type: 'success' })
+      onOpenChange(false)
+      onSaved()
+    } catch {
+      addToast({ title: 'Kunde inte spara', type: 'error' })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="w-[96vw] sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Antaganden</DialogTitle>
+          <DialogDescription>Gäller både P&L och Offers-kalkylen.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          {field('paymentFeePct', 'Betalavgift, % av kundens belopp')}
+          {field('paymentFeeFixed', 'Betalavgift, kr per order')}
+          {field('corporateTaxPct', 'Bolagsskatt, %')}
+          {Object.entries(draft.fxToSek)
+            .filter(([c]) => c !== 'SEK')
+            .map(([cur, rate]) => (
+              <label key={cur} className="grid grid-cols-[1fr_120px] items-center gap-3 text-sm">
+                <span className="text-slate-700">SEK per {cur} (annonskonton)</span>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={rate}
+                  onChange={(e) => setDraft({ ...draft, fxToSek: { ...draft.fxToSek, [cur]: Number(e.target.value) } })}
+                />
+              </label>
+            ))}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Avbryt</Button>
+          <Button onClick={save} disabled={saving}>
+            {saving && <Loader2 className="mr-1 h-4 w-4 animate-spin" />} Spara
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

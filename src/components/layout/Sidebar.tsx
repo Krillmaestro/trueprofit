@@ -16,6 +16,7 @@ import {
   Store,
   HelpCircle,
   Sparkles,
+  Calculator,
 } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
@@ -26,6 +27,7 @@ const navigation = [
   { name: 'COGS', href: '/cogs', icon: DollarSign },
   { name: 'Expenses', href: '/expenses', icon: Receipt },
   { name: 'P&L Report', href: '/pnl', icon: FileText },
+  { name: 'Offers', href: '/offers', icon: Calculator },
   { name: 'Ads', href: '/ads', icon: Megaphone },
   // Bank page still exists at /bank but hidden from main navigation
 ]
