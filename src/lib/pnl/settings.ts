@@ -18,6 +18,13 @@ export interface PnLSettings {
   refundPct: number
   /** Offer calculator: profit you want left per order, % of net revenue */
   targetMarginPct: number
+  /** Booked amounts per month (YYYY-MM, SEK ex moms) from the accounting, for reconciliation */
+  booked?: {
+    shipping: Record<string, number>
+    inventory: Record<string, number>
+    source: string
+    syncedAt: string
+  }
 }
 
 // 2.9 % + 3 kr is the agreed schablon (Kristoffer 30 sep 2026: "kör bara med schablon").

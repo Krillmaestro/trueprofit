@@ -76,6 +76,8 @@ export interface PnLColumn {
   operatingProfit: number
   corporateTax: number
   profitAfterTax: number
+  /** From the accounting (Fortnox), whole months only; null = not booked/partial */
+  booked: { shipping: number | null; inventory: number | null }
   metrics: {
     orders: number
     units: number
@@ -457,6 +459,14 @@ export async function computePnL(params: {
     totalAcc,
     settings
   )
+  const sumBooked = (pick: (c: PnLColumn) => number | null) => {
+    const values = columns.map(pick).filter((v): v is number => v !== null)
+    return values.length > 0 ? r2(values.reduce((s, v) => s + v, 0)) : null
+  }
+  total.booked = {
+    shipping: sumBooked((c) => c.booked.shipping),
+    inventory: sumBooked((c) => c.booked.inventory),
+  }
 
   // ---------- Products ----------
   const productKeys = [...PRODUCT_GROUPS.map((g) => g.key), OTHER_GROUP.key, UNALLOCATED_ADS.key]
@@ -603,6 +613,10 @@ function buildColumn(bucket: PeriodBucket, a: Acc, settings: PnLSettings): PnLCo
     operatingProfit: r2(operatingProfit),
     corporateTax: r2(-corporateTax),
     profitAfterTax: r2(operatingProfit - corporateTax),
+    booked: {
+      shipping: bucket.partial ? null : settings.booked?.shipping[bucket.key] ?? null,
+      inventory: bucket.partial ? null : settings.booked?.inventory[bucket.key] ?? null,
+    },
     metrics: {
       orders: a.orders,
       units: a.units,

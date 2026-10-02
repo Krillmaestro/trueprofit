@@ -66,7 +66,7 @@ interface Row {
   key: string
   label: string
   kind: RowKind
-  value?: (c: PnLColumn) => number
+  value?: (c: PnLColumn) => number | null
   help?: string
 }
 
@@ -109,6 +109,15 @@ function buildRows(report: PnLReport): Row[] {
     { key: 'op', label: 'Rörelseresultat', kind: 'result', value: (c) => c.operatingProfit },
     { key: 'tax', label: `Bolagsskatt (${num(report.settings.corporateTaxPct, 1)} %, uppskattad)`, kind: 'sub', value: (c) => c.corporateTax },
     { key: 'pat', label: 'Resultat efter skatt', kind: 'result', value: (c) => c.profitAfterTax },
+    ...(report.settings.booked
+      ? [
+          { key: 's-booked', label: `Avstämning mot bokföringen (${report.settings.booked.source})`, kind: 'section' as RowKind },
+          { key: 'bk-model', label: '3PL & frakt enligt modellen', kind: 'memo' as RowKind, value: (c: PnLColumn) => -c.variable.fulfillment },
+          { key: 'bk-ship', label: 'Frakt, 3PL & emballage bokfört', kind: 'memo' as RowKind, value: (c: PnLColumn) => c.booked.shipping, help: 'Konto 5700/5710/5410/5460 + Konsido. Hela månader. Tomt = inte bokfört än.' },
+          { key: 'bk-cogs', label: 'Varukostnad enligt modellen', kind: 'memo' as RowKind, value: (c: PnLColumn) => -c.cogs.total },
+          { key: 'bk-inv', label: 'Varuinköp bokfört (lager – blir kostnad när det säljs)', kind: 'memo' as RowKind, value: (c: PnLColumn) => c.booked.inventory, help: 'Konto 4010/4056/4515. Inköp till lager, inte förbrukning.' },
+        ]
+      : []),
   ]
 }
 
@@ -162,7 +171,7 @@ export default function PnLPage() {
     const lines = [['Rad', ...cols.map((c) => c.label)].join(';')]
     for (const r of rows) {
       if (!r.value) continue
-      lines.push([r.label, ...cols.map((c) => Math.round(r.value!(c)))].join(';'))
+      lines.push([r.label, ...cols.map((c) => { const v = r.value!(c); return v === null ? "" : Math.round(v) })].join(";"))
     }
     const blob = new Blob(['﻿' + lines.join('\n')], { type: 'text/csv;charset=utf-8' })
     const a = document.createElement('a')
@@ -339,14 +348,14 @@ function PnLRow({ row, columns, total }: { row: Row; columns: PnLColumn[]; total
     )
   }
   const value = row.value!
-  const totalValue = value(total)
+  const totalValue = value(total) ?? 0
   const net = total.revenue.netRevenue
   const strong = row.kind === 'subtotal' || row.kind === 'result'
   const colored = row.kind === 'result' || row.key === 'tb3'
 
-  const cell = (v: number) => (
-    <span className={cn(colored && (v >= 0 ? 'text-emerald-500' : 'text-red-500'))}>{kr(v)}</span>
-  )
+  const cell = (v: number | null) =>
+    v === null ? '–' : <span className={cn(colored && (v >= 0 ? 'text-emerald-500' : 'text-red-500'))}>{kr(v)}</span>
+  const isEmptyMemo = row.key === 'opex-none'
 
   return (
     <tr
@@ -354,7 +363,7 @@ function PnLRow({ row, columns, total }: { row: Row; columns: PnLColumn[]; total
         'border-t border-border/50',
         row.kind === 'subtotal' && 'border-border bg-muted/50',
         row.kind === 'result' && 'border-border bg-muted',
-        row.kind === 'memo' && 'text-muted-foreground/70'
+        row.kind === 'memo' && 'text-muted-foreground'
       )}
     >
       <td
@@ -371,11 +380,11 @@ function PnLRow({ row, columns, total }: { row: Row; columns: PnLColumn[]; total
       </td>
       {columns.map((c) => (
         <td key={c.key} className={cn('whitespace-nowrap px-3 py-1.5 text-right', strong && 'font-semibold')}>
-          {row.kind === 'memo' ? '–' : cell(value(c))}
+          {isEmptyMemo ? '–' : cell(value(c))}
         </td>
       ))}
       <td className={cn('whitespace-nowrap px-3 py-1.5 text-right font-medium', strong && 'font-bold')}>
-        {row.kind === 'memo' ? '–' : cell(totalValue)}
+        {isEmptyMemo ? '–' : cell(value(total))}
       </td>
       <td className="whitespace-nowrap py-1.5 pl-3 text-right text-muted-foreground">
         {row.kind !== 'memo' && net !== 0 && !['gross', 'disc', 'ship', 'oms', 'vat'].includes(row.key)
