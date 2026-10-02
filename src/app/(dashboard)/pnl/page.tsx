@@ -310,6 +310,7 @@ export default function PnLPage() {
             </CardContent>
           </Card>
 
+          <ShipmentCostTable report={report} />
           <ProductTable report={report} />
 
           <p className="text-xs leading-relaxed text-slate-500">
@@ -487,6 +488,74 @@ function DataQualityPanel({ report }: { report: PnLReport }) {
         </ul>
       </AlertDescription>
     </Alert>
+  )
+}
+
+function ShipmentCostTable({ report }: { report: PnLReport }) {
+  const rows = report.shipmentCosts
+  if (rows.length === 0) return null
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle>Vad varje skickad order kostar</CardTitle>
+        <CardDescription>
+          Snitt per order med bara en produkt, från periodens riktiga ordrar. Kostnad = burkar + gåvor + 3PL & frakt +
+          betalavgift. CAC = produktens annonser delat på produktens ordrar. Alla belopp ex moms utom kolumnen Kunden betalar.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="overflow-x-auto">
+        <table className="w-full text-sm tabular-nums">
+          <thead>
+            <tr className="border-b border-border text-right text-xs uppercase tracking-wide text-muted-foreground">
+              <th className="py-2 pr-4 text-left font-medium">Produkt</th>
+              <th className="px-2 py-2 font-medium">Burkar</th>
+              <th className="px-2 py-2 font-medium">Ordrar</th>
+              <th className="px-2 py-2 font-medium">Kunden betalar</th>
+              <th className="px-2 py-2 font-medium">Netto</th>
+              <th className="px-2 py-2 font-medium">Varor</th>
+              <th className="px-2 py-2 font-medium">Gåvor</th>
+              <th className="px-2 py-2 font-medium">3PL & frakt</th>
+              <th className="px-2 py-2 font-medium">Betalavg.</th>
+              <th className="px-2 py-2 font-semibold text-foreground">Kostnad/order</th>
+              <th className="px-2 py-2 font-medium">Per burk</th>
+              <th className="px-2 py-2 font-medium">TB före annonser</th>
+              <th className="px-2 py-2 font-medium">CAC</th>
+              <th className="py-2 pl-2 font-semibold text-foreground">Vinst/order</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => {
+              const firstOfProduct = i === 0 || rows[i - 1].key !== r.key
+              return (
+                <tr key={`${r.key}-${r.units}`} className={cn('border-t', firstOfProduct ? 'border-border' : 'border-border/50')}>
+                  <td className="py-1.5 pr-4 font-medium text-foreground">{firstOfProduct ? r.name : ''}</td>
+                  <td className="px-2 py-1.5 text-right">{r.units}</td>
+                  <td className="px-2 py-1.5 text-right text-muted-foreground">{num(r.orders)}</td>
+                  <td className="px-2 py-1.5 text-right">{kr(r.revenueInklMoms)}</td>
+                  <td className="px-2 py-1.5 text-right">{kr(r.netRevenue)}</td>
+                  <td className="px-2 py-1.5 text-right text-muted-foreground">{kr(r.productCogs)}</td>
+                  <td className="px-2 py-1.5 text-right text-muted-foreground">
+                    {kr(r.giftCogs)}
+                    {r.missingCostUnits > 0 && (
+                      <span className="ml-1 text-amber-500" title={`${num(r.missingCostUnits, 2)} enheter per order saknar inköpspris (räknas 0 kr)`}>⚠</span>
+                    )}
+                  </td>
+                  <td className="px-2 py-1.5 text-right text-muted-foreground">{kr(r.fulfillment)}</td>
+                  <td className="px-2 py-1.5 text-right text-muted-foreground">{kr(r.paymentFee)}</td>
+                  <td className="px-2 py-1.5 text-right font-semibold">{kr(r.totalCost)}</td>
+                  <td className="px-2 py-1.5 text-right">{kr(r.costPerUnit)}</td>
+                  <td className="px-2 py-1.5 text-right">{kr(r.contribution)}</td>
+                  <td className="px-2 py-1.5 text-right text-muted-foreground">{r.cac ? kr(r.cac) : '–'}</td>
+                  <td className={cn('py-1.5 pl-2 text-right font-semibold', r.profitAfterAds >= 0 ? 'text-emerald-500' : 'text-red-500')}>
+                    {kr(r.profitAfterAds)}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </CardContent>
+    </Card>
   )
 }
 

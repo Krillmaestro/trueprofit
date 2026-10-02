@@ -111,6 +111,26 @@ export interface ProductRow {
   breakEvenCac: number
 }
 
+/** What one shipped order costs, from real single-product orders in the period */
+export interface ShipmentCostRow {
+  key: string          // product key
+  name: string
+  units: number        // burkar i ordern
+  orders: number
+  revenueInklMoms: number   // per order
+  netRevenue: number        // per order, ex moms
+  productCogs: number
+  giftCogs: number
+  fulfillment: number
+  paymentFee: number
+  totalCost: number         // varor + gåvor + 3PL/frakt + betalavgift
+  costPerUnit: number       // totalCost / burkar
+  contribution: number      // netRevenue − totalCost (före annonser)
+  cac: number               // produktens annonser / produktens ordrar
+  profitAfterAds: number
+  missingCostUnits: number  // gift/product units without COGS, per order
+}
+
 export interface DataQuality {
   missingCogs: Array<{ title: string; units: number; lines: number }>
   adAccounts: Array<{ name: string; platform: string; currency: string; lastDate: string | null; spend: number; stale: boolean }>
@@ -125,6 +145,7 @@ export interface PnLReport {
   columns: PnLColumn[]
   total: PnLColumn
   products: ProductRow[]
+  shipmentCosts: ShipmentCostRow[]
   dataQuality: DataQuality
   settings: PnLSettings
 }
@@ -276,6 +297,8 @@ export async function computePnL(params: {
   })
 
   const missingCogs = new Map<string, { units: number; lines: number }>()
+  type TierAcc = { orders: number; gross: number; net: number; cogsP: number; cogsG: number; ful: number; fee: number; missing: number }
+  const tierAccs = new Map<string, TierAcc>()
   let ordersWithoutShippingTier = 0
 
   for (const order of orders) {
@@ -293,6 +316,7 @@ export async function computePnL(params: {
     let cogsProducts = 0
     let cogsGifts = 0
     let physicalItems = 0
+    let missingUnits = 0
     const lines = order.lineItems.map((li) => ({ title: li.title, price: n(li.price), quantity: li.quantity }))
 
     order.lineItems.forEach((li, i) => {
@@ -305,6 +329,7 @@ export async function computePnL(params: {
         m.units += li.quantity
         m.lines += 1
         missingCogs.set(li.title, m)
+        missingUnits += li.quantity
       } else if (price <= 0) {
         cogsGifts += unitCost * li.quantity
       } else {
@@ -334,6 +359,20 @@ export async function computePnL(params: {
     acc.paymentFees += fee
     acc.orders += 1
     acc.units += primary.units
+
+    if (primary.singleProduct && primary.units > 0) {
+      const tk = `${primary.key}|${primary.units}`
+      const t = tierAccs.get(tk) ?? { orders: 0, gross: 0, net: 0, cogsP: 0, cogsG: 0, ful: 0, fee: 0, missing: 0 }
+      t.orders++
+      t.gross += totalPrice
+      t.net += totalPrice - tax
+      t.cogsP += cogsProducts
+      t.cogsG += cogsGifts
+      t.ful += fulfillment
+      t.fee += fee
+      t.missing += missingUnits
+      tierAccs.set(tk, t)
+    }
 
     const p = productAcc(primary.key)
     p.orders += 1
@@ -497,6 +536,42 @@ export async function computePnL(params: {
     })
     .sort((a, b) => b.netRevenue - a.netRevenue)
 
+  // ---------- Cost per shipped order ----------
+  const shipmentCosts: ShipmentCostRow[] = [...tierAccs.entries()]
+    .map(([tk, t]) => {
+      const [key, unitsStr] = tk.split('|')
+      const units = Number(unitsStr)
+      const per = (v: number) => v / t.orders
+      const totalCost = per(t.cogsP + t.cogsG + t.ful + t.fee)
+      const pa = productAccs.get(key)
+      const cac = pa && pa.orders > 0 ? pa.adSpend / pa.orders : 0
+      const net = per(t.net)
+      return {
+        key,
+        name: groupName(key),
+        units,
+        orders: t.orders,
+        revenueInklMoms: r2(per(t.gross)),
+        netRevenue: r2(net),
+        productCogs: r2(per(t.cogsP)),
+        giftCogs: r2(per(t.cogsG)),
+        fulfillment: r2(per(t.ful)),
+        paymentFee: r2(per(t.fee)),
+        totalCost: r2(totalCost),
+        costPerUnit: r2(totalCost / units),
+        contribution: r2(net - totalCost),
+        cac: r2(cac),
+        profitAfterAds: r2(net - totalCost - cac),
+        missingCostUnits: r2(per(t.missing)),
+      }
+    })
+    // Only tiers that actually sell; tiny tiers are noise
+    .filter((r) => r.orders >= 5)
+    .sort((a, b) => {
+      const ia = productKeys.indexOf(a.key), ib = productKeys.indexOf(b.key)
+      return ia !== ib ? ia - ib : a.units - b.units
+    })
+
   // ---------- Data quality ----------
   const adAccounts = await prisma.adAccount.findMany({
     where: { teamId, isActive: true },
@@ -543,6 +618,7 @@ export async function computePnL(params: {
     columns,
     total,
     products,
+    shipmentCosts,
     dataQuality,
     settings,
   }

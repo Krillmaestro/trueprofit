@@ -17,7 +17,7 @@ const kalkon = (qty: number): OfferGift => ({ name: 'Belöningsbitar+ Kalkon', q
 const ebok = (name: string): OfferGift => ({ name, qty: 1, unitCost: 0, physical: false })
 const munKit = (bookName: string): OfferGift[] => [
   ebok(bookName),
-  { name: 'FingerBorste (kit)', qty: 1, unitCost: 15, physical: true },
+  { name: 'FingerBorste (kit)', qty: 1, unitCost: 4.84, physical: true },
   { name: 'Tandstensskrapa (kit)', qty: 1, unitCost: null, physical: true },
 ]
 
