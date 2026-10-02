@@ -79,7 +79,7 @@ export const DEFAULT_OFFERS: Array<{ name: string; config: OfferConfig }> = [
     },
   },
   {
-    name: 'Ledtillskott',
+    name: 'Rörelse+',
     config: {
       productGroup: 'led',
       unitCogs: 72.61,
@@ -100,7 +100,7 @@ export const DEFAULT_OFFERS: Array<{ name: string; config: OfferConfig }> = [
     },
   },
   {
-    name: 'Daglig+ / Calming',
+    name: 'Relax+',
     config: {
       productGroup: 'calming',
       unitCogs: 57.54,

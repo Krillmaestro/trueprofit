@@ -531,7 +531,7 @@ function ProductTable({ report }: { report: PnLReport }) {
                   <td className="px-3 py-1.5 text-right text-muted-foreground">{kr(-(p.fulfillment + p.paymentFees))}</td>
                   <td className="px-3 py-1.5 text-right text-muted-foreground">{kr(p.refunds)}</td>
                   <td className="px-3 py-1.5 text-right">{kr(p.contributionBeforeMarketing)}</td>
-                  <td className="px-3 py-1.5 text-right text-muted-foreground">{kr(-p.adSpend)}</td>
+                  <td className="px-3 py-1.5 text-right text-muted-foreground">{kr(p.adSpend ? -p.adSpend : 0)}</td>
                   <td className={cn('px-3 py-1.5 text-right font-semibold', p.contributionAfterMarketing >= 0 ? 'text-emerald-500' : 'text-red-500')}>
                     {kr(p.contributionAfterMarketing)}
                   </td>

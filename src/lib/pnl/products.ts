@@ -20,9 +20,9 @@ export const PRODUCT_GROUPS: ProductGroup[] = [
   { key: 'probiotika', name: 'Probiotika', line: /probiotika/i, campaign: /probiotic|probiotika/i },
   { key: 'allergi', name: 'Quercetin+ (Klåda & Allergi)', line: /quercetin|klåda\s*&\s*allergi|klada/i, campaign: /allergi|klåda|klada|quercetin/i },
   { key: 'munhalsa', name: 'Munhälsa+', line: /munhälsa|munhalsa/i, campaign: /munhälsa|munhalsa|dental|tandvård/i },
-  { key: 'led', name: 'Ledtillskott', line: /ledtillskott/i, campaign: /ledtillskott|\bled\b|joint/i },
+  { key: 'led', name: 'Rörelse+', line: /ledtillskott|rörelse\+?/i, campaign: /ledtillskott|rörelse|\bled\b|joint/i },
   { key: 'skin', name: 'Skin & Coat', line: /skin\s*&\s*coat/i, campaign: /skin|päls/i },
-  { key: 'calming', name: 'Daglig+ / Calming', line: /daglig|calming/i, campaign: /daglig|calming/i },
+  { key: 'calming', name: 'Relax+', line: /relax|daglig|calming/i, campaign: /relax|daglig|calming/i },
   { key: 'belöningsbitar', name: 'Belöningsbitar+', line: /belöningsbitar/i, campaign: /belöningsbitar|godis/i },
 ]
 
