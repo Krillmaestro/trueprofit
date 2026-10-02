@@ -181,8 +181,8 @@ export default function OffersPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-foreground">Offers</h1>
-        <p className="text-muted-foreground">
+        <h1 className="text-2xl font-bold text-slate-800">Offers</h1>
+        <p className="text-slate-600">
           Räkna på erbjudandena per burk-steg. Allt räknas om direkt – spara när du vill behålla det.
         </p>
       </div>
@@ -201,7 +201,7 @@ export default function OffersPage() {
       />
 
       {/* Offer tabs */}
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2 rounded-xl bg-card p-2 text-card-foreground">
         {data.offers.map((o) => (
           <Button
             key={o.id}

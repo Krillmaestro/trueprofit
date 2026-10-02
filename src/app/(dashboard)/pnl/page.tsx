@@ -176,12 +176,12 @@ export default function PnLPage() {
       {/* Header */}
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">P&L</h1>
-          <p className="text-muted-foreground">
+          <h1 className="text-2xl font-bold text-slate-800">P&L</h1>
+          <p className="text-slate-600">
             Resultaträkning per månad, svensk tid. Allt under nettoomsättning är ex moms.
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 rounded-xl bg-card p-2 text-card-foreground">
           {PRESETS.map((p) => (
             <Button
               key={p.key}
@@ -303,7 +303,7 @@ export default function PnLPage() {
 
           <ProductTable report={report} />
 
-          <p className="text-xs leading-relaxed text-muted-foreground">
+          <p className="text-xs leading-relaxed text-slate-500">
             Ordrar räknas på processed_at i svensk tid, avbrutna ordrar exkluderas. Varukostnad slås upp per orderdatum
             (COGS-historik). 3PL & frakt räknas från fraktnivåerna per burk. Annonskostnad hämtas per kontodag och räknas om
             till SEK. Produktraden får hela orderns intäkt och kostnad enligt huvudprodukten; annonser fördelas på
@@ -469,9 +469,9 @@ function DataQualityPanel({ report }: { report: PnLReport }) {
 
   if (issues.length === 0) return null
   return (
-    <Alert className="border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300">
-      <AlertTriangle className="h-4 w-4 text-amber-500" />
-      <AlertDescription className="space-y-1 text-amber-700 dark:text-amber-300">
+    <Alert className="border-amber-300 bg-amber-50 text-amber-900">
+      <AlertTriangle className="h-4 w-4 text-amber-600" />
+      <AlertDescription className="space-y-1 text-amber-900">
         <div className="font-semibold">Det här gör siffrorna mindre exakta</div>
         <ul className="list-disc space-y-0.5 pl-5">
           {issues.map((i, idx) => <li key={idx}>{i}</li>)}
