@@ -28,7 +28,7 @@ export const DEFAULT_PNL_SETTINGS: PnLSettings = {
   corporateTaxPct: 20.6,
   fxToSek: { SEK: 1, USD: 9.5, EUR: 11.33 },
   protectionPrice: 39,
-  protectionAttachPct: 58,
+  protectionAttachPct: 54,
   refundPct: 1,
   targetMarginPct: 10,
 }

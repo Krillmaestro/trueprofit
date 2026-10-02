@@ -176,8 +176,8 @@ export default function PnLPage() {
       {/* Header */}
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800">P&L</h1>
-          <p className="text-slate-600">
+          <h1 className="text-2xl font-bold text-foreground">P&L</h1>
+          <p className="text-muted-foreground">
             Resultaträkning per månad, svensk tid. Allt under nettoomsättning är ex moms.
           </p>
         </div>
@@ -205,7 +205,7 @@ export default function PnLPage() {
                 if (e.target.value) setRange([e.target.value, range[1]])
               }}
             />
-            <span className="text-slate-400">–</span>
+            <span className="text-muted-foreground/70">–</span>
             <Input
               type="date"
               className="h-8 w-[140px]"
@@ -249,7 +249,7 @@ export default function PnLPage() {
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center gap-2">
                 Resultaträkning
-                {loading && <Loader2 className="h-4 w-4 animate-spin text-slate-400" />}
+                {loading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground/70" />}
               </CardTitle>
               <CardDescription>
                 {report.range.start} – {report.range.end} · {report.range.days} dagar
@@ -258,14 +258,14 @@ export default function PnLPage() {
             <CardContent className="overflow-x-auto">
               <table className="w-full text-sm tabular-nums">
                 <thead>
-                  <tr className="border-b border-slate-200 text-right text-xs uppercase tracking-wide text-slate-500">
-                    <th className="sticky left-0 bg-white py-2 pr-4 text-left font-medium">Rad</th>
+                  <tr className="border-b border-border text-right text-xs uppercase tracking-wide text-muted-foreground">
+                    <th className="sticky left-0 bg-card py-2 pr-4 text-left font-medium">Rad</th>
                     {showColumns.map((c) => (
                       <th key={c.key} className="whitespace-nowrap px-3 py-2 font-medium">
                         {c.label}
                       </th>
                     ))}
-                    <th className="whitespace-nowrap px-3 py-2 font-semibold text-slate-700">Totalt</th>
+                    <th className="whitespace-nowrap px-3 py-2 font-semibold text-foreground">Totalt</th>
                     <th className="whitespace-nowrap py-2 pl-3 font-medium">% av netto</th>
                   </tr>
                 </thead>
@@ -280,19 +280,19 @@ export default function PnLPage() {
               <table className="mt-6 w-full text-sm tabular-nums">
                 <tbody>
                   <tr>
-                    <td colSpan={showColumns.length + 3} className="pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <td colSpan={showColumns.length + 3} className="pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Nyckeltal
                     </td>
                   </tr>
                   {METRICS.map((m) => (
-                    <tr key={m.key} className="border-t border-slate-100">
-                      <td className="sticky left-0 bg-white py-1.5 pr-4 text-slate-600" title={m.help}>
+                    <tr key={m.key} className="border-t border-border/50">
+                      <td className="sticky left-0 bg-card py-1.5 pr-4 text-muted-foreground" title={m.help}>
                         {m.label}
                       </td>
                       {showColumns.map((c) => (
-                        <td key={c.key} className="whitespace-nowrap px-3 py-1.5 text-right text-slate-700">{m.fmt(c)}</td>
+                        <td key={c.key} className="whitespace-nowrap px-3 py-1.5 text-right text-foreground">{m.fmt(c)}</td>
                       ))}
-                      <td className="whitespace-nowrap px-3 py-1.5 text-right font-medium text-slate-800">{m.fmt(report.total)}</td>
+                      <td className="whitespace-nowrap px-3 py-1.5 text-right font-medium text-foreground">{m.fmt(report.total)}</td>
                       <td />
                     </tr>
                   ))}
@@ -303,7 +303,7 @@ export default function PnLPage() {
 
           <ProductTable report={report} />
 
-          <p className="text-xs leading-relaxed text-slate-500">
+          <p className="text-xs leading-relaxed text-muted-foreground">
             Ordrar räknas på processed_at i svensk tid, avbrutna ordrar exkluderas. Varukostnad slås upp per orderdatum
             (COGS-historik). 3PL & frakt räknas från fraktnivåerna per burk. Annonskostnad hämtas per kontodag och räknas om
             till SEK. Produktraden får hela orderns intäkt och kostnad enligt huvudprodukten; annonser fördelas på
@@ -332,7 +332,7 @@ function PnLRow({ row, columns, total }: { row: Row; columns: PnLColumn[]; total
   if (row.kind === 'section') {
     return (
       <tr>
-        <td colSpan={columns.length + 3} className="pb-1 pt-4 text-xs font-semibold uppercase tracking-wide text-slate-500">
+        <td colSpan={columns.length + 3} className="pb-1 pt-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           {row.label}
         </td>
       </tr>
@@ -345,29 +345,29 @@ function PnLRow({ row, columns, total }: { row: Row; columns: PnLColumn[]; total
   const colored = row.kind === 'result' || row.key === 'tb3'
 
   const cell = (v: number) => (
-    <span className={cn(colored && (v >= 0 ? 'text-emerald-700' : 'text-red-600'))}>{kr(v)}</span>
+    <span className={cn(colored && (v >= 0 ? 'text-emerald-500' : 'text-red-500'))}>{kr(v)}</span>
   )
 
   return (
     <tr
       className={cn(
-        'border-t border-slate-100',
-        row.kind === 'subtotal' && 'border-slate-300 bg-slate-50',
-        row.kind === 'result' && 'border-slate-400 bg-slate-100',
-        row.kind === 'memo' && 'text-slate-400'
+        'border-t border-border/50',
+        row.kind === 'subtotal' && 'border-border bg-muted/50',
+        row.kind === 'result' && 'border-border bg-muted',
+        row.kind === 'memo' && 'text-muted-foreground/70'
       )}
     >
       <td
         className={cn(
           'sticky left-0 py-1.5 pr-4',
-          row.kind === 'sub' ? 'pl-4 text-slate-600' : 'text-slate-800',
+          row.kind === 'sub' ? 'pl-4 text-muted-foreground' : 'text-foreground',
           strong ? 'font-semibold' : '',
-          row.kind === 'subtotal' ? 'bg-slate-50' : row.kind === 'result' ? 'bg-slate-100' : 'bg-white'
+          row.kind === 'subtotal' ? 'bg-muted/50' : row.kind === 'result' ? 'bg-muted' : 'bg-card'
         )}
         title={row.help}
       >
         {row.label}
-        {row.help && <span className="ml-1 cursor-help text-slate-400">ⓘ</span>}
+        {row.help && <span className="ml-1 cursor-help text-muted-foreground/70">ⓘ</span>}
       </td>
       {columns.map((c) => (
         <td key={c.key} className={cn('whitespace-nowrap px-3 py-1.5 text-right', strong && 'font-semibold')}>
@@ -377,7 +377,7 @@ function PnLRow({ row, columns, total }: { row: Row; columns: PnLColumn[]; total
       <td className={cn('whitespace-nowrap px-3 py-1.5 text-right font-medium', strong && 'font-bold')}>
         {row.kind === 'memo' ? '–' : cell(totalValue)}
       </td>
-      <td className="whitespace-nowrap py-1.5 pl-3 text-right text-slate-500">
+      <td className="whitespace-nowrap py-1.5 pl-3 text-right text-muted-foreground">
         {row.kind !== 'memo' && net !== 0 && !['gross', 'disc', 'ship', 'oms', 'vat'].includes(row.key)
           ? pct((totalValue / net) * 100)
           : ''}
@@ -390,11 +390,11 @@ function Kpi({ label, value, sub, tone }: { label: string; value: string; sub?: 
   return (
     <Card className="gap-1 py-4">
       <CardContent className="px-4">
-        <div className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</div>
-        <div className={cn('mt-1 text-xl font-bold tabular-nums text-slate-800', tone === 'good' && 'text-emerald-700', tone === 'bad' && 'text-red-600')}>
+        <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</div>
+        <div className={cn('mt-1 text-xl font-bold tabular-nums text-foreground', tone === 'good' && 'text-emerald-500', tone === 'bad' && 'text-red-500')}>
           {value}
         </div>
-        {sub && <div className="mt-0.5 text-xs text-slate-500">{sub}</div>}
+        {sub && <div className="mt-0.5 text-xs text-muted-foreground">{sub}</div>}
       </CardContent>
     </Card>
   )
@@ -469,9 +469,9 @@ function DataQualityPanel({ report }: { report: PnLReport }) {
 
   if (issues.length === 0) return null
   return (
-    <Alert className="border-amber-300 bg-amber-50 text-amber-900">
-      <AlertTriangle className="h-4 w-4 text-amber-600" />
-      <AlertDescription className="space-y-1 text-amber-900">
+    <Alert className="border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300">
+      <AlertTriangle className="h-4 w-4 text-amber-500" />
+      <AlertDescription className="space-y-1 text-amber-700 dark:text-amber-300">
         <div className="font-semibold">Det här gör siffrorna mindre exakta</div>
         <ul className="list-disc space-y-0.5 pl-5">
           {issues.map((i, idx) => <li key={idx}>{i}</li>)}
@@ -495,7 +495,7 @@ function ProductTable({ report }: { report: PnLReport }) {
       <CardContent className="overflow-x-auto">
         <table className="w-full text-sm tabular-nums">
           <thead>
-            <tr className="border-b border-slate-200 text-right text-xs uppercase tracking-wide text-slate-500">
+            <tr className="border-b border-border text-right text-xs uppercase tracking-wide text-muted-foreground">
               <th className="py-2 pr-4 text-left font-medium">Produkt</th>
               <th className="px-3 py-2 font-medium">Ordrar</th>
               <th className="px-3 py-2 font-medium">Netto</th>
@@ -514,20 +514,20 @@ function ProductTable({ report }: { report: PnLReport }) {
             {rows.map((p) => {
               const cacBad = p.orders > 0 && p.cac > p.breakEvenCac
               return (
-                <tr key={p.key} className="border-t border-slate-100">
-                  <td className="py-1.5 pr-4 font-medium text-slate-800">{p.name}</td>
+                <tr key={p.key} className="border-t border-border/50">
+                  <td className="py-1.5 pr-4 font-medium text-foreground">{p.name}</td>
                   <td className="px-3 py-1.5 text-right">{p.orders ? num(p.orders) : '–'}</td>
                   <td className="px-3 py-1.5 text-right">{kr(p.netRevenue)}</td>
-                  <td className="px-3 py-1.5 text-right text-slate-600">{kr(-p.cogs)}</td>
-                  <td className="px-3 py-1.5 text-right text-slate-600">{kr(-(p.fulfillment + p.paymentFees))}</td>
-                  <td className="px-3 py-1.5 text-right text-slate-600">{kr(p.refunds)}</td>
+                  <td className="px-3 py-1.5 text-right text-muted-foreground">{kr(-p.cogs)}</td>
+                  <td className="px-3 py-1.5 text-right text-muted-foreground">{kr(-(p.fulfillment + p.paymentFees))}</td>
+                  <td className="px-3 py-1.5 text-right text-muted-foreground">{kr(p.refunds)}</td>
                   <td className="px-3 py-1.5 text-right">{kr(p.contributionBeforeMarketing)}</td>
-                  <td className="px-3 py-1.5 text-right text-slate-600">{kr(-p.adSpend)}</td>
-                  <td className={cn('px-3 py-1.5 text-right font-semibold', p.contributionAfterMarketing >= 0 ? 'text-emerald-700' : 'text-red-600')}>
+                  <td className="px-3 py-1.5 text-right text-muted-foreground">{kr(-p.adSpend)}</td>
+                  <td className={cn('px-3 py-1.5 text-right font-semibold', p.contributionAfterMarketing >= 0 ? 'text-emerald-500' : 'text-red-500')}>
                     {kr(p.contributionAfterMarketing)}
                   </td>
                   <td className="px-3 py-1.5 text-right">{p.netRevenue ? pct(p.marginPct) : '–'}</td>
-                  <td className={cn('px-3 py-1.5 text-right', cacBad && 'font-semibold text-red-600')}>
+                  <td className={cn('px-3 py-1.5 text-right', cacBad && 'font-semibold text-red-500')}>
                     {p.orders ? kr(p.cac) : '–'}
                   </td>
                   <td className="py-1.5 pl-3 text-right">
@@ -562,7 +562,7 @@ function SettingsDialog({
 
   const field = (key: keyof PnLSettings, label: string, step = '0.01') => (
     <label className="grid grid-cols-[1fr_120px] items-center gap-3 text-sm">
-      <span className="text-slate-700">{label}</span>
+      <span className="text-foreground">{label}</span>
       <Input
         type="number"
         step={step}
@@ -606,7 +606,7 @@ function SettingsDialog({
             .filter(([c]) => c !== 'SEK')
             .map(([cur, rate]) => (
               <label key={cur} className="grid grid-cols-[1fr_120px] items-center gap-3 text-sm">
-                <span className="text-slate-700">SEK per {cur} (annonskonton)</span>
+                <span className="text-foreground">SEK per {cur} (annonskonton)</span>
                 <Input
                   type="number"
                   step="0.01"
